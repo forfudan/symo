@@ -1,0 +1,48 @@
+[workspace]
+authors = ["ZHU Yuhao (朱宇浩) <dr.yuhao.zhu@outlook.com>"]
+channels = ["https://conda.modular.com/max", "https://repo.prefix.dev/modular-community", "conda-forge"]
+description = "A symbolic computation library for Mojo, built on top of Decimo"
+license = "Apache-2.0"
+name = "symo"
+platforms = ["osx-arm64", "linux-64"]
+readme = "README.md"
+version = "0.1.0"
+
+[dependencies]
+decimo = ">=0.11.0" # Arbitrary-precision integer/decimal backend for exact numeric evaluation
+mojo = ">=1.0.0b2,<2" # Mojo language compiler and runtime
+
+[tasks]
+# format the code
+format = """pixi run mojo format ./src \
+&& pixi run mojo format ./examples \
+&& pixi run mojo format ./tests"""
+
+# doc: generate API docs and diagnose missing docstrings
+doc = "pixi run mojo doc --diagnose-missing-doc-strings src/symo > /dev/null"
+
+# compile the package into a pre-built .mojoc and copy it where tests can import it
+p = "clear && pixi run package"
+package = """pixi run format \
+&& pixi run package_symo \
+&& pixi run doc"""
+package_symo = """pixi run mojo precompile src/symo -o symo.mojoc \
+&& cp symo.mojoc tests/ \
+&& rm symo.mojoc"""
+
+# clean the packaged files in tests folder
+c = "clear && pixi run clean"
+clean = "rm -f tests/symo.mojoc"
+
+# tests
+test = "bash tests/test.sh"
+t = "clear && pixi run test"
+
+# run an example: pixi run ex examples/derivative.mojo
+ex = "pixi run mojo run -I src"
+
+# all: format, package, test, clean
+all = """pixi run format \
+&& pixi run package \
+&& pixi run test \
+&& pixi run clean"""

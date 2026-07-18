@@ -1,0 +1,18 @@
+Symo
+Copyright 2026 Yuhao Zhu
+
+Licensed under the Apache License, Version 2.0.
+
+
+Dependencies
+============
+
+Symo is a symbolic computation library built on top of Decimo, an
+arbitrary-precision integer and decimal library for Mojo.
+
+Decimo (https://github.com/forfudan/decimo)
+  Copyright 2025-2026 Yuhao Zhu
+  Licensed under the Apache License, Version 2.0.
+
+Symo uses Decimo's arbitrary-precision numeric types (BigInt, BigDecimal)
+as the concrete backend for exact numeric constants and evaluation.
