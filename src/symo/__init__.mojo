@@ -1,6 +1,6 @@
 """Symo: a symbolic computation library for Mojo, built on top of Decimo.
 
-Symo provides an immutable symbolic expression tree (`Expr`) and the algorithms
+Symo provides an immutable symbolic expression tree (`Expression`) and the algorithms
 that operate on it: construction, simplification, algebra, calculus, elementary
 functions, numeric evaluation, and printing.
 

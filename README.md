@@ -11,7 +11,7 @@ on top of [Decimo](https://github.com/forfudan/decimo).
 
 Symo provides a symbolic ("computer algebra") layer for Mojo. Where Decimo
 delivers *exact numeric* types (`BigInt`, `BigDecimal`), Symo delivers an
-*exact symbolic* type: an immutable expression tree (`Expr`) representing
+*exact symbolic* type: an immutable expression tree (`Expression`) representing
 symbols, numbers, sums, products, powers, and functions.
 
 Decimo slots in as the concrete number type inside `Number` nodes and powers
@@ -23,8 +23,8 @@ of Decimo ("Decimal" + "Mojo").
 
 ## Planned features
 
-- **Expression trees** — `Symbol`, `Number` (backed by Decimo), `Add`, `Mul`,
-  `Pow`, `Function`, with structural equality, hashing, and immutability.
+- **Expression trees** — `Symbol`, `Number` (backed by Decimo), `Add`, `Multiply`,
+  `Power`, `Function`, with structural equality, hashing, and immutability.
   `Number` starts on Decimo's `BigInt`/`BigDecimal`; exact fractions arrive
   later via Decimo's `Rational`.
 - **Construction** — operator overloading (`+ - * / **`) and an optional
@@ -45,15 +45,15 @@ of Decimo ("Decimal" + "Mojo").
 symo/
 ├── src/
 │   └── symo/                 # Core library (Mojo package)
-│       ├── core/             #   Expression tree (Expr, Symbol, Number, ...)
-│       ├── parser/           #   Operator overloading + string DSL → Expr
+│       ├── core/             #   Expression tree (Expression, Symbol, Number, ...)
+│       ├── parser/           #   Operator overloading + string DSL → Expression
 │       ├── simplify/         #   Constant folding, canonicalization, identities
 │       ├── algebra/          #   Polynomials, rationals, equation solving
 │       ├── calculus/         #   Differentiation, integration, limits
-│       ├── functions/        #   Elementary functions as Expr nodes
+│       ├── functions/        #   Elementary functions as Expression nodes
 │       ├── numeric/          #   Substitution + numeric evaluation (Decimo)
 │       ├── printer/          #   Infix / LaTeX printing
-│       └── linalg/           #   Symbolic vectors/matrices (stretch goal)
+│       └── linear_algebra/           #   Symbolic vectors/matrices (stretch goal)
 ├── examples/                 # Runnable usage examples
 ├── tests/                    # Unit tests (one subfolder per module)
 ├── docs/                     # Documentation and design notes

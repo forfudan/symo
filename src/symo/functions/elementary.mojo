@@ -3,7 +3,7 @@
 Each function is represented as a `Function` node carrying its name and
 argument(s). Each also registers:
 
-- a derivative rule (used by `symo.calculus.diff`)
+- a derivative rule (used by `symo.calculus.differentiation`)
 - simplification rules (used by `symo.simplify`)
 - a numeric implementation via Decimo (used by `symo.numeric`)
 

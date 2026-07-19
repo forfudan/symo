@@ -1,14 +1,21 @@
-"""Minimal placeholder example.
+"""A first taste of Symo's expression tree.
 
 Run with:
 
     pixi run ex examples/hello.mojo
 
-Once the core API lands, this will build a symbolic expression, differentiate
-it, simplify it, and evaluate it numerically via Decimo. For now it only
-confirms the toolchain is wired up.
+Builds a few expressions with ordinary Mojo operators and prints them. Later
+milestones will add simplification, differentiation, and numeric evaluation.
 """
 
+from symo.prelude import *
 
-def main():
-    print("symo scaffold — nothing to compute yet")
+
+def main() raises:
+    var x = Expression.symbol("x")
+    var y = Expression.symbol("y")
+
+    print(x**2 + 3 * x - 1)  # x**2 + 3*x - 1
+    print((x + y) ** 2)  # (x + y)**2
+    print(x / (x + 1))  # x/(x + 1)
+    print(x - y - 1)  # x - y - 1

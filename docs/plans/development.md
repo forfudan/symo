@@ -7,7 +7,7 @@ Mojo built on top of [Decimo](https://github.com/forfudan/decimo).
 ## Guiding idea
 
 Decimo already gives us arbitrary-precision integers and decimals. Symo sits on
-top as the *symbolic* layer: an immutable expression tree (`Expr`) whose
+top as the *symbolic* layer: an immutable expression tree (`Expression`) whose
 `Number` leaves hold Decimo values. Anything that needs an exact number —
 constant folding, `evalf`, evaluating an elementary function — hands the work
 to Decimo. We don't reimplement arithmetic; we orchestrate it.
@@ -31,7 +31,7 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 
 ### `core` — the expression tree
 
-- `Expr` with node kinds: `Symbol`, `Number`, `Add`, `Mul`, `Pow`, `Function`.
+- `Expression` with node kinds: `Symbol`, `Number`, `Add`, `Multiply`, `Power`, `Function`.
 - `Number` wraps a Decimo `BigInt` or `BigDecimal` at first, with a `Rational`
   variant (backed by Decimo's `Rational`) added later — see "What a `Number`
   holds" above.
@@ -40,8 +40,8 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 
 ### `parser` — construction
 
-- Operator overloading (`+ - * / **`) on `Expr` for natural Mojo syntax.
-- Optional string DSL (`"x**2 + 3*x - 1"` -> `Expr`).
+- Operator overloading (`+ - * / **`) on `Expression` for natural Mojo syntax.
+- Optional string DSL (`"x**2 + 3*x - 1"` -> `Expression`).
 - **Decision:** the symbolic parser lives in Symo, not Decimo. Decimo's parser
   is a numeric evaluator (shunting-yard -> value) and does not preserve unbound
   symbols or produce a tree. Symo can borrow tokenizer ideas but needs its own
@@ -50,7 +50,7 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 ### `simplify`
 
 - Constant folding via Decimo arithmetic (exact).
-- Flattening nested `Add`/`Mul`, like-term collection, canonical ordering.
+- Flattening nested `Add`/`Multiply`, like-term collection, canonical ordering.
 - Identity rules: `x*1`, `x+0`, `x**0`, `x**1`, etc.
 
 ### `algebra`
@@ -67,7 +67,7 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 
 ### `functions`
 
-- Elementary functions as `Expr` nodes: `sin`, `cos`, `exp`, `log`, `sqrt`, ...
+- Elementary functions as `Expression` nodes: `sin`, `cos`, `exp`, `log`, `sqrt`, ...
 - Each carries its own derivative rule, simplification rules, and a Decimo-based
   numeric implementation.
 
@@ -81,9 +81,9 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 - Infix string printer (correct precedence, minimal parentheses).
 - LaTeX output (later).
 
-### `linalg` (stretch goal)
+### `linear_algebra` (stretch goal)
 
-- Symbolic vectors/matrices whose elements are `Expr`.
+- Symbolic vectors/matrices whose elements are `Expression`.
 
 ## Build order
 
@@ -94,21 +94,23 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 5. `calculus` — depends on `core`, `simplify`, and `functions`.
 6. `numeric` — substitution + Decimo-backed evaluation, ties symbolic to exact.
 7. `parser` string DSL — convenience layer once the tree API is stable.
-8. `linalg` — stretch goal, last.
+8. `linear_algebra` — stretch goal, last.
 
 Decimo slots in early: as the concrete number type inside `Number` nodes and as
 the evaluation backend in `numeric`.
 
 ## Milestones
 
-- **M0 (current):** repo scaffold, package layout, tasks, placeholders.
-- **M1:** `core.Expr` + operator overloading + `printer.to_string`; round-trip a
-  hand-built expression to text.
+- **M0 (done):** repo scaffold, package layout, tasks, placeholders.
+- **M1 (done):** `core.Expression` + operator overloading (`+ - * / **`, `Expression` and
+  `Int` operands) + `printer.to_string`; a hand-built expression round-trips to
+  text. Subtraction and division are reconstructed by the printer from the
+  canonical `+ (-1)*` / `* **(-1)` forms. Covered by `tests/core/test_expression.mojo`.
 - **M2:** `simplify` with constant folding and basic identities.
-- **M3:** `calculus.diff` over polynomials and elementary functions.
+- **M3:** `calculus.differentiation` over polynomials and elementary functions.
 - **M4:** `numeric.subs` / `evalf` against Decimo at configurable precision.
 - **M5:** string DSL parser; `algebra` expand/collect.
-- **M6+:** factoring, integration, limits, `linalg`.
+- **M6+:** factoring, integration, limits, `linear_algebra`.
 
 ## Open questions
 

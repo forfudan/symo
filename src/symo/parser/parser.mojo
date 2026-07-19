@@ -1,9 +1,9 @@
-"""String DSL parser: text -> `Expr`.
+"""String DSL parser: text -> `Expression`.
 
 Planned pipeline:
 
 - tokenizer: source text -> tokens (numbers, identifiers, operators, parens)
-- parser: tokens -> `Expr` tree (precedence-climbing / Pratt parsing)
+- parser: tokens -> `Expression` tree (precedence-climbing / Pratt parsing)
 
 Numeric literals are parsed into Decimo-backed `Number` nodes to preserve
 exactness; identifiers become `Symbol` nodes.
