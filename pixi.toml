@@ -11,6 +11,7 @@ version = "0.1.0"
 [dependencies]
 decimo = ">=0.11.0" # Arbitrary-precision integer/decimal backend for exact numeric evaluation
 mojo = ">=1.0.0b2,<2" # Mojo language compiler and runtime
+python = ">=3.13,<3.14" # Pinned below 3.14: the `mojo format` tool (mblack) is not yet 3.14-compatible
 
 [tasks]
 # format the code

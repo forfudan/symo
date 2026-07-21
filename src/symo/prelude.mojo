@@ -4,8 +4,6 @@ Usage:
 
     from symo.prelude import *
 
+Only the names that are expected to be used frequently are imported here.
 More names will be added here as the corresponding modules are implemented.
 """
-
-from symo.core.expression import Expression, ExpressionKind
-from symo.printer.printer import to_string

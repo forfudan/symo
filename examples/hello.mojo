@@ -19,3 +19,8 @@ def main() raises:
     print((x + y) ** 2)  # (x + y)**2
     print(x / (x + 1))  # x/(x + 1)
     print(x - y - 1)  # x - y - 1
+
+    # Simplification: constant folding, identities, and collection.
+    print(simplify(x + x))  # 2*x
+    print(simplify(x**2 * x**3))  # x**5
+    print(simplify(2 * x + 3 * x + 1))  # 5*x + 1

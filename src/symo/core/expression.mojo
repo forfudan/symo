@@ -59,7 +59,7 @@ struct Expression(Copyable, Movable, Writable):
 
     An `Expression` is one of six kinds (see `ExpressionKind`). Leaves carry data directly:
     a `Symbol` uses `_name`, a `Number` uses `_value`. Internal nodes (`Add`,
-    `Multiply`, `Power`, `Function`) carry their operands in `_args`; a `Function` also
+    `Multiply`, `Power`, `Function`) carry their operands in `_arguments`; a `Function` also
     uses `_name` for its function name.
 
     Build expressions with the static constructors (`Expression.symbol`,
@@ -83,7 +83,7 @@ struct Expression(Copyable, Movable, Writable):
     """The identifier for a `Symbol`, or the name of a `Function`."""
     var _value: BigDecimal
     """The numeric value for a `Number` node (unused otherwise)."""
-    var _args: List[Expression]
+    var _arguments: List[Expression]
     """The child operands (empty for `Symbol` and `Number` leaves)."""
 
     # ===------------------------------------------------------------------=== #
@@ -108,7 +108,7 @@ struct Expression(Copyable, Movable, Writable):
         kind: Int,
         name: String,
         value: BigDecimal,
-        var args: List[Expression],
+        var arguments: List[Expression],
     ):
         """Initializes an `Expression` from its raw fields.
 
@@ -120,12 +120,12 @@ struct Expression(Copyable, Movable, Writable):
             kind: The node kind (an `ExpressionKind` constant).
             name: The symbol/function name (empty for other kinds).
             value: The numeric value (`Number` nodes only).
-            args: The child operands (owned).
+            arguments: The child operands (owned).
         """
         self._kind = kind
         self._name = name
         self._value = value.copy()
-        self._args = args^
+        self._arguments = arguments^
 
     # ===------------------------------------------------------------------=== #
     # Constructing methods that are not dunders
@@ -203,8 +203,8 @@ struct Expression(Copyable, Movable, Writable):
         var flat = List[Expression]()
         for i in range(len(terms)):
             if terms[i]._kind == ExpressionKind.ADD:
-                for j in range(len(terms[i]._args)):
-                    flat.append(terms[i]._args[j].copy())
+                for j in range(len(terms[i]._arguments)):
+                    flat.append(terms[i]._arguments[j].copy())
             else:
                 flat.append(terms[i].copy())
         if len(flat) == 0:
@@ -231,8 +231,8 @@ struct Expression(Copyable, Movable, Writable):
         var flat = List[Expression]()
         for i in range(len(factors)):
             if factors[i]._kind == ExpressionKind.MULTIPLY:
-                for j in range(len(factors[i]._args)):
-                    flat.append(factors[i]._args[j].copy())
+                for j in range(len(factors[i]._arguments)):
+                    flat.append(factors[i]._arguments[j].copy())
             else:
                 flat.append(factors[i].copy())
         if len(flat) == 0:
@@ -254,23 +254,27 @@ struct Expression(Copyable, Movable, Writable):
         Returns:
             A `Power` expression.
         """
-        var args = List[Expression]()
-        args.append(base.copy())
-        args.append(exponent.copy())
-        return Expression(ExpressionKind.POWER, String(), BigDecimal(), args^)
+        var arguments = List[Expression]()
+        arguments.append(base.copy())
+        arguments.append(exponent.copy())
+        return Expression(
+            ExpressionKind.POWER, String(), BigDecimal(), arguments^
+        )
 
     @staticmethod
-    def function(name: String, var args: List[Expression]) -> Expression:
+    def function(name: String, var arguments: List[Expression]) -> Expression:
         """Creates a `Function` application node.
 
         Args:
             name: The function name, e.g. `"sin"`.
-            args: The argument expressions (owned).
+            arguments: The argument expressions (owned).
 
         Returns:
             A `Function` expression.
         """
-        return Expression(ExpressionKind.FUNCTION, name, BigDecimal(), args^)
+        return Expression(
+            ExpressionKind.FUNCTION, name, BigDecimal(), arguments^
+        )
 
     # ===------------------------------------------------------------------=== #
     # Basic unary arithmetic operation dunders
@@ -483,10 +487,10 @@ struct Expression(Copyable, Movable, Writable):
         if self._kind == ExpressionKind.FUNCTION:
             if self._name != other._name:
                 return False
-        if len(self._args) != len(other._args):
+        if len(self._arguments) != len(other._arguments):
             return False
-        for i in range(len(self._args)):
-            if not (self._args[i] == other._args[i]):
+        for i in range(len(self._arguments)):
+            if not (self._arguments[i] == other._arguments[i]):
                 return False
         return True
 
@@ -500,6 +504,53 @@ struct Expression(Copyable, Movable, Writable):
             `True` if the expressions are not structurally equal.
         """
         return not (self == other)
+
+    # ===------------------------------------------------------------------=== #
+    # Accessors and introspection
+    # ===------------------------------------------------------------------=== #
+
+    def kind(self) -> Int:
+        """Returns this node's kind (an `ExpressionKind` constant).
+
+        Returns:
+            The node kind.
+        """
+        return self._kind
+
+    def name(self) -> String:
+        """Returns the name of a `Symbol` or `Function` node.
+
+        Returns:
+            The name, or the empty string for other kinds.
+        """
+        return self._name.copy()
+
+    def value(self) -> BigDecimal:
+        """Returns the numeric value of a `Number` node.
+
+        Returns:
+            The value; unspecified for non-`Number` kinds.
+        """
+        return self._value.copy()
+
+    def num_arguments(self) -> Int:
+        """Returns the number of child operands.
+
+        Returns:
+            The operand count (zero for `Symbol` and `Number` leaves).
+        """
+        return len(self._arguments)
+
+    def argument(self, index: Int) -> Expression:
+        """Returns the child operand at `index`.
+
+        Args:
+            index: The zero-based operand position.
+
+        Returns:
+            A copy of the operand.
+        """
+        return self._arguments[index].copy()
 
     # ===------------------------------------------------------------------=== #
     # Output dunders and type-transfer methods
@@ -569,10 +620,10 @@ struct Expression(Copyable, Movable, Writable):
         elif self._kind == ExpressionKind.FUNCTION:
             writer.write(self._name)
             writer.write("(")
-            for i in range(len(self._args)):
+            for i in range(len(self._arguments)):
                 if i > 0:
                     writer.write(", ")
-                self._args[i]._write(writer, 0)
+                self._arguments[i]._write(writer, 0)
             writer.write(")")
         elif self._kind == ExpressionKind.POWER:
             self._write_power(writer)
@@ -596,16 +647,16 @@ struct Expression(Copyable, Movable, Writable):
         # Parenthesize a bare negative-number base so that `-2**3` (which reads
         # as `-(2**3)`) is not produced by accident.
         if (
-            self._args[0]._kind == ExpressionKind.NUMBER
-            and self._args[0]._value.is_negative()
+            self._arguments[0]._kind == ExpressionKind.NUMBER
+            and self._arguments[0]._value.is_negative()
         ):
             writer.write("(")
-            writer.write(String(self._args[0]._value))
+            writer.write(String(self._arguments[0]._value))
             writer.write(")")
         else:
-            self._args[0]._write(writer, Expression._PREC_ATOM)
+            self._arguments[0]._write(writer, Expression._PREC_ATOM)
         writer.write("**")
-        self._args[1]._write(writer, Expression._PREC_POWER)
+        self._arguments[1]._write(writer, Expression._PREC_POWER)
 
     def _write_multiply[W: Writer](self, mut writer: W):
         """Writes a `Multiply` node, reconstructing `/` from negative powers.
@@ -618,8 +669,8 @@ struct Expression(Copyable, Movable, Writable):
         """
         var numerators = List[Int]()
         var denominators = List[Int]()
-        for i in range(len(self._args)):
-            if self._args[i]._is_reciprocal():
+        for i in range(len(self._arguments)):
+            if self._arguments[i]._is_reciprocal():
                 denominators.append(i)
             else:
                 numerators.append(i)
@@ -640,14 +691,14 @@ struct Expression(Copyable, Movable, Writable):
         Args:
             writer: The writer instance.
         """
-        self._args[0]._write(writer, Expression._PREC_ADD)
-        for i in range(1, len(self._args)):
-            if self._args[i]._is_negative_term():
+        self._arguments[0]._write(writer, Expression._PREC_ADD)
+        for i in range(1, len(self._arguments)):
+            if self._arguments[i]._is_negative_term():
                 writer.write(" - ")
-                self._args[i]._write_negated(writer)
+                self._arguments[i]._write_negated(writer)
             else:
                 writer.write(" + ")
-                self._args[i]._write(writer, Expression._PREC_ADD)
+                self._arguments[i]._write(writer, Expression._PREC_ADD)
 
     def _write_factor_list[
         W: Writer
@@ -664,14 +715,14 @@ struct Expression(Copyable, Movable, Writable):
 
         Args:
             writer: The writer instance.
-            indices: Positions in `_args` of the numerator factors.
+            indices: Positions in `_arguments` of the numerator factors.
             negate: Whether to flip the leading coefficient's sign.
         """
         var wrote = False
         var start = 0
         var first = indices[0]
-        if self._args[first]._kind == ExpressionKind.NUMBER:
-            var coefficient = self._args[first]._value.copy()
+        if self._arguments[first]._kind == ExpressionKind.NUMBER:
+            var coefficient = self._arguments[first]._value.copy()
             if negate:
                 coefficient = -coefficient
             if coefficient == BigDecimal(1) and len(indices) > 1:
@@ -686,7 +737,9 @@ struct Expression(Copyable, Movable, Writable):
         for k in range(start, len(indices)):
             if wrote:
                 writer.write("*")
-            self._args[indices[k]]._write(writer, Expression._PREC_MULTIPLY)
+            self._arguments[indices[k]]._write(
+                writer, Expression._PREC_MULTIPLY
+            )
             wrote = True
         if not wrote:
             writer.write("1")
@@ -699,12 +752,12 @@ struct Expression(Copyable, Movable, Writable):
 
         Args:
             writer: The writer instance.
-            indices: Positions in `_args` of the reciprocal (negative-power)
+            indices: Positions in `_arguments` of the reciprocal (negative-power)
                 factors.
         """
         writer.write("/")
         if len(indices) == 1:
-            self._args[indices[0]]._write_reciprocal_base(
+            self._arguments[indices[0]]._write_reciprocal_base(
                 writer, Expression._PREC_POWER
             )
         else:
@@ -712,7 +765,7 @@ struct Expression(Copyable, Movable, Writable):
             for k in range(len(indices)):
                 if k > 0:
                     writer.write("*")
-                self._args[indices[k]]._write_reciprocal_base(
+                self._arguments[indices[k]]._write_reciprocal_base(
                     writer, Expression._PREC_MULTIPLY
                 )
             writer.write(")")
@@ -732,8 +785,8 @@ struct Expression(Copyable, Movable, Writable):
             return
         var numerators = List[Int]()
         var denominators = List[Int]()
-        for i in range(len(self._args)):
-            if self._args[i]._is_reciprocal():
+        for i in range(len(self._arguments)):
+            if self._arguments[i]._is_reciprocal():
                 denominators.append(i)
             else:
                 numerators.append(i)
@@ -757,14 +810,14 @@ struct Expression(Copyable, Movable, Writable):
             writer: The writer instance.
             parent_prec: The precedence required by the enclosing context.
         """
-        var positive_exponent = -self._args[1]._value
+        var positive_exponent = -self._arguments[1]._value
         if positive_exponent == BigDecimal(1):
-            self._args[0]._write(writer, parent_prec)
+            self._arguments[0]._write(writer, parent_prec)
         else:
             var need_paren = Expression._PREC_POWER < parent_prec
             if need_paren:
                 writer.write("(")
-            self._args[0]._write(writer, Expression._PREC_ATOM)
+            self._arguments[0]._write(writer, Expression._PREC_ATOM)
             writer.write("**")
             writer.write(String(positive_exponent))
             if need_paren:
@@ -779,8 +832,8 @@ struct Expression(Copyable, Movable, Writable):
         """
         return (
             self._kind == ExpressionKind.POWER
-            and self._args[1]._kind == ExpressionKind.NUMBER
-            and self._args[1]._value.is_negative()
+            and self._arguments[1]._kind == ExpressionKind.NUMBER
+            and self._arguments[1]._value.is_negative()
         )
 
     def _is_negative_term(self) -> Bool:
@@ -793,9 +846,9 @@ struct Expression(Copyable, Movable, Writable):
         """
         if self._kind == ExpressionKind.NUMBER:
             return self._value.is_negative()
-        if self._kind == ExpressionKind.MULTIPLY and len(self._args) > 0:
+        if self._kind == ExpressionKind.MULTIPLY and len(self._arguments) > 0:
             return (
-                self._args[0]._kind == ExpressionKind.NUMBER
-                and self._args[0]._value.is_negative()
+                self._arguments[0]._kind == ExpressionKind.NUMBER
+                and self._arguments[0]._value.is_negative()
             )
         return False

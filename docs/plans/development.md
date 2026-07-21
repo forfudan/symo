@@ -106,7 +106,10 @@ the evaluation backend in `numeric`.
   `Int` operands) + `printer.to_string`; a hand-built expression round-trips to
   text. Subtraction and division are reconstructed by the printer from the
   canonical `+ (-1)*` / `* **(-1)` forms. Covered by `tests/core/test_expression.mojo`.
-- **M2:** `simplify` with constant folding and basic identities.
+- **M2 (done):** `simplify` with constant folding, the zero/one identities, and
+  like-term (`x + x -> 2*x`) / like-base (`x * x -> x**2`) collection. Collection
+  is structural and order-sensitive; canonical ordering is still pending.
+  Covered by `tests/simplify/test_simplify.mojo`.
 - **M3:** `calculus.differentiation` over polynomials and elementary functions.
 - **M4:** `numeric.subs` / `evalf` against Decimo at configurable precision.
 - **M5:** string DSL parser; `algebra` expand/collect.
