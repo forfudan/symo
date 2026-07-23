@@ -1,6 +1,7 @@
 # Pixi environments
 .pixi/
 *.lock
+!pixi.lock
 
 # Mojo build artifacts
 *.mojoc

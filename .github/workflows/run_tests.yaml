@@ -1,0 +1,110 @@
+name: Symo Unit Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+defaults:
+  run:
+    shell: bash
+
+# Mirrors Decimo's CI layout: a `build` gate (format check, package build,
+# doc generation) followed by per-module test jobs. Two adaptations for
+# Symo's smaller size:
+#
+# - The test jobs are a matrix over the test subfolders instead of
+#   hand-written jobs.
+# - No `symo.mojoc` artifact is passed to the test jobs: `tests/test.sh`
+#   compiles from source via `-I src`, so the gate builds the package only
+#   to verify that packaging works.
+#
+# The pixi environment is cached by `prefix-dev/setup-pixi`, and every Mojo
+# invocation is wrapped in a retry loop because the Mojo compiler still
+# crashes intermittently.
+
+jobs:
+  # ── Gate: Format + Build package + Doc ──────────────────────────────────────
+  build:
+    name: Build & Format & Doc
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.9.5
+        with:
+          cache: true
+          activate-environment: true
+      - name: Install pre-commit
+        run: pip install pre-commit
+      - name: Format check
+        run: pre-commit run --all-files
+      - name: Build package (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== build attempt $attempt ==="
+            if pixi run mojo precompile src/symo -o symo.mojoc; then
+              echo "=== build succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== build failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== build crashed, retrying in 5s... ==="
+            sleep 5
+          done
+      - name: Verify symo.mojoc was produced
+        run: test -f symo.mojoc
+      - name: Generate docs (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== doc attempt $attempt ==="
+            if pixi run doc; then
+              echo "=== doc succeeded on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== doc failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== doc crashed, retrying in 5s... ==="
+            sleep 5
+          done
+
+  # ── Test: one job per test subfolder ────────────────────────────────────────
+  test:
+    name: Test ${{ matrix.module }}
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [core, simplify, calculus, steps]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: prefix-dev/setup-pixi@v0.9.5
+        with:
+          cache: true
+          activate-environment: true
+      - name: Run tests (with retry for Mojo compiler intermittent crashes)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== test attempt $attempt ==="
+            if bash tests/test.sh tests/${{ matrix.module }}; then
+              echo "=== tests passed on attempt $attempt ==="
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "=== tests failed after 3 attempts ==="
+              exit 1
+            fi
+            echo "=== test run crashed, retrying in 5s... ==="
+            sleep 5
+          done
