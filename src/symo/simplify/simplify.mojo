@@ -32,7 +32,7 @@ Collection uses structural equality, which is order-sensitive, so `x*y` and
 that in a later milestone.
 
 The engine records its rewrites into a `Trace` (see `symo.steps`). The
-`simplify(e, detail=n)` overload returns a `Derivation` holding the answer
+`simplify(expression, detail=n)` overload returns a `Derivation` holding the answer
 together with the recorded steps. Since a rewrite is only known once it has
 been computed, simplification steps are recorded bottom-up (children before
 parents), each with the subexpression before and after the rewrite.
@@ -44,11 +44,11 @@ from symo.core.expression import Expression, ExpressionKind
 from symo.steps.steps import Derivation, StepTag, Trace
 
 
-def simplify(e: Expression) raises -> Expression:
+def simplify(expression: Expression) raises -> Expression:
     """Simplifies an expression by constant folding and basic identities.
 
     Args:
-        e: The expression to simplify.
+        expression: The expression to simplify.
 
     Returns:
         A simplified, structurally-equivalent expression.
@@ -57,10 +57,10 @@ def simplify(e: Expression) raises -> Expression:
         Error: If an internal numeric operation fails.
     """
     var trace = Trace(0)
-    return simplify(e, trace)
+    return simplify(expression, trace)
 
 
-def simplify(e: Expression, mut trace: Trace) raises -> Expression:
+def simplify(expression: Expression, mut trace: Trace) raises -> Expression:
     """Simplifies an expression, recording steps into a caller's trace.
 
     This is the engine entry point for callers that thread their own `Trace`
@@ -68,7 +68,7 @@ def simplify(e: Expression, mut trace: Trace) raises -> Expression:
     instead.
 
     Args:
-        e: The expression to simplify.
+        expression: The expression to simplify.
         trace: The trace that receives the recorded steps.
 
     Returns:
@@ -77,28 +77,28 @@ def simplify(e: Expression, mut trace: Trace) raises -> Expression:
     Raises:
         Error: If an internal numeric operation fails.
     """
-    var k = e.kind()
+    var k = expression.kind()
     if k == ExpressionKind.SYMBOL or k == ExpressionKind.NUMBER:
-        return e.copy()
+        return expression.copy()
     if k == ExpressionKind.FUNCTION:
         var new_arguments = List[Expression]()
-        for i in range(e.num_arguments()):
-            new_arguments.append(simplify(e.argument(i), trace))
-        return Expression.function(e.name(), new_arguments^)
+        for i in range(expression.num_arguments()):
+            new_arguments.append(simplify(expression.argument(i), trace))
+        return Expression.function(expression.name(), new_arguments^)
     if k == ExpressionKind.ADD:
-        return _simplify_add(e, trace)
+        return _simplify_add(expression, trace)
     if k == ExpressionKind.MULTIPLY:
-        return _simplify_multiply(e, trace)
+        return _simplify_multiply(expression, trace)
     if k == ExpressionKind.POWER:
-        return _simplify_power(e, trace)
-    return e.copy()
+        return _simplify_power(expression, trace)
+    return expression.copy()
 
 
-def simplify(e: Expression, detail: Int) raises -> Derivation:
+def simplify(expression: Expression, detail: Int) raises -> Derivation:
     """Simplifies an expression and returns the answer with its steps.
 
     Args:
-        e: The expression to simplify.
+        expression: The expression to simplify.
         detail: How much to record: `0` nothing, `1` core steps, `2` also
             pedagogical steps, `3` everything including trivial rewrites.
 
@@ -110,8 +110,8 @@ def simplify(e: Expression, detail: Int) raises -> Derivation:
         Error: If an internal numeric operation fails.
     """
     var trace = Trace(detail)
-    var result = simplify(e, trace)
-    return Derivation(e.copy(), result^, trace^)
+    var result = simplify(expression, trace)
+    return Derivation(expression.copy(), result^, trace^)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -119,12 +119,14 @@ def simplify(e: Expression, detail: Int) raises -> Derivation:
 # ===----------------------------------------------------------------------=== #
 
 
-def _simplify_add(e: Expression, mut trace: Trace) raises -> Expression:
+def _simplify_add(
+    expression: Expression, mut trace: Trace
+) raises -> Expression:
     """Simplifies an `Add` node: folds the numeric constant and collects like
     terms.
 
     Args:
-        e: The `Add` expression.
+        expression: The `Add` expression.
         trace: The trace that receives the recorded steps.
 
     Returns:
@@ -135,8 +137,8 @@ def _simplify_add(e: Expression, mut trace: Trace) raises -> Expression:
     """
     # Simplify and flatten the operands into a single list of terms.
     var terms = List[Expression]()
-    for i in range(e.num_arguments()):
-        var s = simplify(e.argument(i), trace)
+    for i in range(expression.num_arguments()):
+        var s = simplify(expression.argument(i), trace)
         if s.kind() == ExpressionKind.ADD:
             for j in range(s.num_arguments()):
                 terms.append(s.argument(j))
@@ -211,12 +213,14 @@ def _simplify_add(e: Expression, mut trace: Trace) raises -> Expression:
 # ===----------------------------------------------------------------------=== #
 
 
-def _simplify_multiply(e: Expression, mut trace: Trace) raises -> Expression:
+def _simplify_multiply(
+    expression: Expression, mut trace: Trace
+) raises -> Expression:
     """Simplifies a `Multiply` node: folds the numeric coefficient, collects
     like bases (summing exponents), and applies the zero/one identities.
 
     Args:
-        e: The `Multiply` expression.
+        expression: The `Multiply` expression.
         trace: The trace that receives the recorded steps.
 
     Returns:
@@ -227,8 +231,8 @@ def _simplify_multiply(e: Expression, mut trace: Trace) raises -> Expression:
     """
     # Simplify and flatten the operands into a single list of factors.
     var factors = List[Expression]()
-    for i in range(e.num_arguments()):
-        var s = simplify(e.argument(i), trace)
+    for i in range(expression.num_arguments()):
+        var s = simplify(expression.argument(i), trace)
         if s.kind() == ExpressionKind.MULTIPLY:
             for j in range(s.num_arguments()):
                 factors.append(s.argument(j))
@@ -306,12 +310,14 @@ def _simplify_multiply(e: Expression, mut trace: Trace) raises -> Expression:
 # ===----------------------------------------------------------------------=== #
 
 
-def _simplify_power(e: Expression, mut trace: Trace) raises -> Expression:
+def _simplify_power(
+    expression: Expression, mut trace: Trace
+) raises -> Expression:
     """Simplifies a `Power` node: applies the zero/one identities and folds a
     numeric base raised to a non-negative integer exponent.
 
     Args:
-        e: The `Power` expression.
+        expression: The `Power` expression.
         trace: The trace that receives the recorded steps.
 
     Returns:
@@ -320,8 +326,8 @@ def _simplify_power(e: Expression, mut trace: Trace) raises -> Expression:
     Raises:
         Error: If an internal numeric operation fails.
     """
-    var base = simplify(e.argument(0), trace)
-    var exponent = simplify(e.argument(1), trace)
+    var base = simplify(expression.argument(0), trace)
+    var exponent = simplify(expression.argument(1), trace)
     var result = _make_power(base, exponent)
 
     # Record the rewrite. Evaluating a fully numeric power is pedagogical;

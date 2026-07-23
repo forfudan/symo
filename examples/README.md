@@ -12,4 +12,4 @@ Planned examples (added as features land):
 - `build_expression.mojo` — build expressions with operators and the string DSL
 - `differentiate.mojo` — symbolic differentiation
 - `simplify.mojo` — simplification and canonicalization
-- `evalf.mojo` — high-precision numeric evaluation via Decimo
+- `evaluate.mojo` — high-precision numeric evaluation via Decimo

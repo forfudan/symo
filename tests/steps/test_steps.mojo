@@ -79,9 +79,9 @@ def test_detail_filtering_is_cumulative() raises:
 def test_traced_result_matches_untraced() raises:
     """The `detail` overload returns the same result as the plain one."""
     var x = Expression.symbol("x")
-    var e = x**3 + 3 * x - 1
-    var d = differentiate(e, "x", detail=3)
-    assert_equal(String(d.result), String(differentiate(e, "x")))
+    var expression = x**3 + 3 * x - 1
+    var d = differentiate(expression, "x", detail=3)
+    assert_equal(String(d.result), String(differentiate(expression, "x")))
     assert_true(d.trace.num_steps() > 0)
 
 

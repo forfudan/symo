@@ -339,14 +339,14 @@ struct Derivation(Copyable, Movable, Writable):
     steps in between.
 
     Returned by the `detail` overloads of the engines, e.g.
-    `differentiate(e, "x", detail=2)`. The fields are public: `d.input` is
+    `differentiate(expression, "x", detail=2)`. The fields are public: `d.input` is
     the problem statement, `d.result` is the final expression, and `d.trace`
     holds the recorded steps.
     """
 
     var input: Expression
     """The problem statement: the expression the computation started from.
-    Differentiation stores the marker form `d/dvar(e)`; `simplify` stores the
+    Differentiation stores the marker form `d/dvar(expression)`; `simplify` stores the
     input expression itself."""
     var result: Expression
     """The final (simplified) expression."""

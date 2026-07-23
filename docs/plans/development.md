@@ -9,7 +9,7 @@ Mojo built on top of [Decimo](https://github.com/forfudan/decimo).
 Decimo already gives us arbitrary-precision integers and decimals. Symo sits on
 top as the *symbolic* layer: an immutable expression tree (`Expression`) whose
 `Number` leaves hold Decimo values. Anything that needs an exact number —
-constant folding, `evalf`, evaluating an elementary function — hands the work
+constant folding, `evaluate`, evaluating an elementary function — hands the work
 to Decimo. We don't reimplement arithmetic; we orchestrate it.
 
 ### What a `Number` holds
@@ -26,6 +26,35 @@ to matter in `algebra`, where exact rational coefficients make cancellation and
 factoring clean (`x/3 + x/6` should collapse to `x/2`, not a rounded decimal).
 The plan: add a `Rational` variant to `Number` around the time `algebra` lands,
 backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
+
+## Naming convention
+
+Public functions and types carry the **full descriptive name**, in snake_case
+for functions: `substitute` and `evaluate`, not `subs` and `evalf`. The same
+rule applies to everything added later (`integrate`, not `integ`;
+`differentiate`, not `diff`).
+
+**One name per operation.** We do not ship short aliases alongside the full
+names, following the Zen of Python: "There should be one — and preferably only
+one — obvious way to do it." Two spellings for one function split the
+documentation, the examples, and the users' habits for no gain.
+
+Terse names inherited from other systems are also often wrong for us. Maple's
+`evalf` means "evaluate in **f**loating-point", one of a family (`evalb`,
+`evalc`, `evalm`, `evalhf`) where the suffix picked the evaluation domain.
+SymPy borrowed only `evalf`, so the `f` no longer contrasts with anything —
+and for Symo it would be actively misleading, since `evaluate` returns an
+exact Decimo `BigDecimal` with no binary floating point involved.
+
+A short alias is only worth considering for a name typed constantly in
+interactive use (as Decimo does with `BDec` for `BigDecimal`), and even then
+the full name stays canonical in signatures, documentation, and tests.
+
+The same rule applies to **parameter names**: the expression argument is
+called `expression`, not `e`. In a computer-algebra library `e` is especially
+bad, since it also reads as Euler's number (and as a caught `Error`). Single
+letters stay reserved for genuine mathematical conventions where they aid
+reading — loop indices `i`/`j`, and `x`/`y` for symbols in tests and examples.
 
 ## Modules
 
@@ -78,8 +107,9 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 
 ### `numeric`
 
-- `subs`: substitute symbols with expressions or Decimo `BigDecimal` values.
-- `evalf`: high-precision numeric evaluation of any expression tree via Decimo.
+- `substitute`: replace symbols with expressions or Decimo `BigDecimal` values.
+- `evaluate`: high-precision numeric evaluation of any expression tree via
+  Decimo.
 
 ### `printer`
 
@@ -246,7 +276,12 @@ the evaluation backend in `numeric`.
   using an inert `d/dvar(...)` function node for a derivative that a later
   step resolves; `simplify` records bottom-up, since a rewrite is only known
   once computed. Covered by `tests/steps/test_steps.mojo`.
-- **M5:** `numeric.subs` / `evalf` against Decimo at configurable precision.
+- **M5 (done):** `numeric.substitute` / `evaluate` against Decimo at
+  configurable precision. `substitute` is purely structural (no simplification);
+  `evaluate` collapses a symbol-free tree to a `BigDecimal`, dispatching
+  `sin`/`cos`/`exp`/`log` (natural)/`sqrt` to Decimo at a requested precision
+  and raising on a surviving free symbol. Covered by
+  `tests/numeric/test_numeric.mojo`.
 - **M6:** string DSL parser; `algebra` expand/collect, with rules tagged as
   they are written.
 - **M7+:** factoring, integration, limits, `linear_algebra`. Fast algorithms

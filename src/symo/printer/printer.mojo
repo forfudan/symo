@@ -16,16 +16,16 @@ from symo.core.expression import Expression
 from symo.steps.steps import Derivation, Step, Trace
 
 
-def to_string(e: Expression) -> String:
+def to_string(expression: Expression) -> String:
     """Renders an expression to an infix string.
 
     Args:
-        e: The expression to render.
+        expression: The expression to render.
 
     Returns:
         The infix representation, e.g. `"x**2 + 3*x - 1"`.
     """
-    return String(e)
+    return String(expression)
 
 
 def to_string(s: Step) -> String:
