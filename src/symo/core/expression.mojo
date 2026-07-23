@@ -626,7 +626,11 @@ struct Expression(Copyable, Movable, Writable):
                 self._arguments[i]._write(writer, 0)
             writer.write(")")
         elif self._kind == ExpressionKind.POWER:
-            self._write_power(writer)
+            if self._is_reciprocal():
+                writer.write("1/")
+                self._write_reciprocal_base(writer, Expression._PREC_POWER)
+            else:
+                self._write_power(writer)
         elif self._kind == ExpressionKind.MULTIPLY:
             self._write_multiply(writer)
         elif self._kind == ExpressionKind.ADD:

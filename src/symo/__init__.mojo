@@ -9,3 +9,8 @@ arbitrary-precision types, so numeric evaluation is exact by default.
 
 This is an early scaffold; the public API is not yet stable.
 """
+
+from symo.core import Expression, ExpressionKind
+from symo.printer import to_string
+from symo.simplify import simplify
+from symo.calculus import differentiate

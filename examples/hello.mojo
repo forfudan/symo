@@ -8,7 +8,7 @@ Builds a few expressions with ordinary Mojo operators and prints them. Later
 milestones will add simplification, differentiation, and numeric evaluation.
 """
 
-from symo.prelude import *
+from symo import Expression, differentiate, simplify
 
 
 def main() raises:
@@ -24,3 +24,7 @@ def main() raises:
     print(simplify(x + x))  # 2*x
     print(simplify(x**2 * x**3))  # x**5
     print(simplify(2 * x + 3 * x + 1))  # 5*x + 1
+
+    # Differentiation (result is simplified).
+    print(differentiate(x**3 + 3 * x - 1, "x"))  # 3*x**2 + 3
+    print(differentiate(x * y, "x"))  # y

@@ -42,6 +42,11 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 
 - Operator overloading (`+ - * / **`) on `Expression` for natural Mojo syntax.
 - Optional string DSL (`"x**2 + 3*x - 1"` -> `Expression`).
+- The string DSL is what removes the need to declare symbols up front: today we
+  write `var x = Expression.symbol("x")` before building an expression, but once
+  the parser lands, `parse("x + x")` will discover `x` on its own and hand back a
+  ready expression. Identifiers become symbols, numeric literals become
+  Decimo-backed numbers.
 - **Decision:** the symbolic parser lives in Symo, not Decimo. Decimo's parser
   is a numeric evaluator (shunting-yard -> value) and does not preserve unbound
   symbols or produce a tree. Symo can borrow tokenizer ideas but needs its own
@@ -81,6 +86,78 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 - Infix string printer (correct precedence, minimal parentheses).
 - LaTeX output (later).
 
+### `steps` — step-by-step traces
+
+A feature that we want to make a signature of Symo: every rule-based engine
+(`simplify`, differentiation, later integration) can show its intermediate
+steps, so that a human can follow the derivation and take reference from it.
+This is rare among open-source CAS libraries — SymPy has no first-class step
+support (SymPy Gamma bolts it on as a separate web service), and in the Wolfram
+world it is a paid feature. Since our engines are already rule-based in the
+"manual" style (product rule, chain rule, identity rewrites), emitting a trace
+is natural for us, while it is hard to retrofit into a library built around
+fast algorithms. We should bake it in from the beginning.
+
+**The `level` parameter.** The public API takes a parameter `level: Int` that
+controls how much is shown:
+
+- `0`: show the result only. No recording. The engine is free to take fast
+  paths and to normalize aggressively.
+- `1`: show the non-trivial steps and the result.
+- `2`: show more steps, at the granularity a textbook would present.
+- `3`: show all steps, including trivial rewrites.
+
+**Tagging.** To make the levels work, every recorded step carries a tag that
+says how important it is: `core` (the main moves of the derivation, e.g.
+"apply the product rule"), `pedagogical` (smaller but still instructive moves,
+e.g. "collect like terms"), and `trivial` (bookkeeping rewrites, e.g.
+`x*1 -> x`, flattening). The mapping is cumulative: a `core` step is shown at
+level >= 1, a `pedagogical` step at level >= 2, a `trivial` step at level >= 3.
+Level 0 records nothing. The tag is assigned at the place where the rule is
+applied, since only the rule itself knows how important it is.
+
+**Data model.** Two small types, living in their own `steps` module:
+
+- `Step`: the tag, the rule name (e.g. `"product-rule"`), the expression
+  before, the expression after, and the position of the rewritten
+  subexpression in the whole tree.
+- `Trace`: the requested `level` plus a `List[Step]`. Its `record(...)` method
+  checks the tag against the level and returns immediately when the step is
+  filtered out, so the level-0 path pays almost nothing.
+
+**Decoupling.** The design principle is that the engines record and the
+printer renders; neither knows about the other's job:
+
+- Each engine takes the trace as an explicit parameter (e.g.
+  `mut trace: Trace`), and its only obligation is to call
+  `trace.record(tag, rule, before, after)` at each rewrite. Passing the trace
+  as a parameter keeps the coupling visible in the signature — no global
+  state, and an engine that does not record simply does not take the
+  parameter.
+- The engines never format text. Rendering a `Trace` (plain text first, LaTeX
+  later) belongs to `printer`.
+- The public wrappers keep the simple signatures: `differentiate(e, "x")`
+  behaves as today, and `differentiate(e, "x", level=2)` returns the result
+  together with the trace.
+
+**Interaction with the rest of the design.**
+
+- Step traces require the intermediate forms to actually exist. This settles
+  the open question below about eager normalization: `core` builders stay
+  lazy, and normalization lives in `simplify` where it can be recorded. Only
+  at level 0 may the engine normalize aggressively or switch to fast
+  algorithms, because nobody is watching.
+- For differentiation and `simplify`, the human steps and the algorithm steps
+  coincide, so one implementation serves both. For integration and factoring
+  (M7+) they diverge: fast algorithms (Risch-style integration, modern
+  factoring) do not correspond to human steps. When we optimize those, we keep
+  the rule-based traceable path alongside the fast one — the `level` parameter
+  then also selects which path runs. This is the same reason SymPy keeps
+  `manualintegrate` next to `risch`; we just plan for it up front.
+- The trace is also our best debugging tool: when `simplify` produces a wrong
+  form or a rule fails to fire, running at level 3 shows exactly which rewrite
+  did it. So the feature pays off internally before any end user sees it.
+
 ### `linear_algebra` (stretch goal)
 
 - Symbolic vectors/matrices whose elements are `Expression`.
@@ -94,7 +171,10 @@ backed by Decimo's `Rational`, and lean on Decimo to mature that type as we go.
 5. `calculus` — depends on `core`, `simplify`, and `functions`.
 6. `numeric` — substitution + Decimo-backed evaluation, ties symbolic to exact.
 7. `parser` string DSL — convenience layer once the tree API is stable.
-8. `linear_algebra` — stretch goal, last.
+8. `steps` — the trace types can land any time after `core`, but wiring them
+   through `simplify` and `calculus` and rendering them is best done once the
+   printer is solid, so it slots here.
+9. `linear_algebra` — stretch goal, last.
 
 Decimo slots in early: as the concrete number type inside `Number` nodes and as
 the evaluation backend in `numeric`.
@@ -110,10 +190,18 @@ the evaluation backend in `numeric`.
   like-term (`x + x -> 2*x`) / like-base (`x * x -> x**2`) collection. Collection
   is structural and order-sensitive; canonical ordering is still pending.
   Covered by `tests/simplify/test_simplify.mojo`.
-- **M3:** `calculus.differentiation` over polynomials and elementary functions.
+- **M3 (done):** `calculus.differentiation` \u2014 sum, product, power, and chain
+  rules, with derivative rules for `sin`, `cos`, `exp`, `log`, `sqrt`. Results
+  are passed through `simplify`. Covered by
+  `tests/calculus/test_differentiation.mojo`.
 - **M4:** `numeric.subs` / `evalf` against Decimo at configurable precision.
 - **M5:** string DSL parser; `algebra` expand/collect.
-- **M6+:** factoring, integration, limits, `linear_algebra`.
+- **M6:** `steps` — the `Step`/`Trace` types, tagging in `simplify` and
+  `calculus.differentiation`, the `level` parameter on the public API, and
+  plain-text rendering of a trace in `printer`.
+- **M7+:** factoring, integration, limits, `linear_algebra`. Fast algorithms
+  introduced here keep the rule-based traceable path alongside, selected by
+  `level`.
 
 ## Open questions
 
@@ -124,4 +212,15 @@ the evaluation backend in `numeric`.
   equality, so it needs pinning down before `simplify` gets serious.
 - How much to normalize eagerly in the `core` builders versus leaving it to
   `simplify`. Too much eager work makes `core` heavy; too little makes every
-  other module defensive.
+  other module defensive. The `steps` design leans this toward "lazy": a step
+  trace needs the intermediate forms to exist, so eager normalization is only
+  acceptable when `level == 0`.
+- How to make the level-0 path truly zero-cost. Passing a `Trace` and checking
+  the level at runtime is cheap but not free. Mojo's compile-time parameters
+  offer an alternative — e.g. `differentiate[recording: Bool]` — so the
+  non-recording version compiles with no trace code at all. Worth trying once
+  the runtime version works; the risk is doubling the compiled code.
+- Whether three tags (`core` / `pedagogical` / `trivial`) are enough, and how
+  to keep tagging consistent across engines. A written guideline with examples
+  for each tag is probably needed once more rules exist, otherwise every
+  contributor draws the lines differently.
