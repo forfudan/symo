@@ -12,3 +12,4 @@ from symo.core.expression import Expression, ExpressionKind
 from symo.printer.printer import to_string
 from symo.simplify.simplify import simplify
 from symo.calculus.differentiation import differentiate
+from symo.steps.steps import Derivation, Step, StepTag, Trace

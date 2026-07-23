@@ -30,11 +30,18 @@
 Collection uses structural equality, which is order-sensitive, so `x*y` and
 `y*x` are not yet recognised as equal. A canonical ordering pass will address
 that in a later milestone.
+
+The engine records its rewrites into a `Trace` (see `symo.steps`). The
+`simplify(e, detail=n)` overload returns a `Derivation` holding the answer
+together with the recorded steps. Since a rewrite is only known once it has
+been computed, simplification steps are recorded bottom-up (children before
+parents), each with the subexpression before and after the rewrite.
 """
 
 from decimo import BigDecimal
 
 from symo.core.expression import Expression, ExpressionKind
+from symo.steps.steps import Derivation, StepTag, Trace
 
 
 def simplify(e: Expression) raises -> Expression:
@@ -49,21 +56,62 @@ def simplify(e: Expression) raises -> Expression:
     Raises:
         Error: If an internal numeric operation fails.
     """
+    var trace = Trace(0)
+    return simplify(e, trace)
+
+
+def simplify(e: Expression, mut trace: Trace) raises -> Expression:
+    """Simplifies an expression, recording steps into a caller's trace.
+
+    This is the engine entry point for callers that thread their own `Trace`
+    through several computations. Most users want the `detail` overload
+    instead.
+
+    Args:
+        e: The expression to simplify.
+        trace: The trace that receives the recorded steps.
+
+    Returns:
+        A simplified, structurally-equivalent expression.
+
+    Raises:
+        Error: If an internal numeric operation fails.
+    """
     var k = e.kind()
     if k == ExpressionKind.SYMBOL or k == ExpressionKind.NUMBER:
         return e.copy()
     if k == ExpressionKind.FUNCTION:
         var new_arguments = List[Expression]()
         for i in range(e.num_arguments()):
-            new_arguments.append(simplify(e.argument(i)))
+            new_arguments.append(simplify(e.argument(i), trace))
         return Expression.function(e.name(), new_arguments^)
     if k == ExpressionKind.ADD:
-        return _simplify_add(e)
+        return _simplify_add(e, trace)
     if k == ExpressionKind.MULTIPLY:
-        return _simplify_multiply(e)
+        return _simplify_multiply(e, trace)
     if k == ExpressionKind.POWER:
-        return _simplify_power(e)
+        return _simplify_power(e, trace)
     return e.copy()
+
+
+def simplify(e: Expression, detail: Int) raises -> Derivation:
+    """Simplifies an expression and returns the answer with its steps.
+
+    Args:
+        e: The expression to simplify.
+        detail: How much to record: `0` nothing, `1` core steps, `2` also
+            pedagogical steps, `3` everything including trivial rewrites.
+
+    Returns:
+        A `Derivation` holding the input expression, the simplified
+        expression, and the trace.
+
+    Raises:
+        Error: If an internal numeric operation fails.
+    """
+    var trace = Trace(detail)
+    var result = simplify(e, trace)
+    return Derivation(e.copy(), result^, trace^)
 
 
 # ===----------------------------------------------------------------------=== #
@@ -71,12 +119,13 @@ def simplify(e: Expression) raises -> Expression:
 # ===----------------------------------------------------------------------=== #
 
 
-def _simplify_add(e: Expression) raises -> Expression:
+def _simplify_add(e: Expression, mut trace: Trace) raises -> Expression:
     """Simplifies an `Add` node: folds the numeric constant and collects like
     terms.
 
     Args:
         e: The `Add` expression.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The simplified expression.
@@ -87,7 +136,7 @@ def _simplify_add(e: Expression) raises -> Expression:
     # Simplify and flatten the operands into a single list of terms.
     var terms = List[Expression]()
     for i in range(e.num_arguments()):
-        var s = simplify(e.argument(i))
+        var s = simplify(e.argument(i), trace)
         if s.kind() == ExpressionKind.ADD:
             for j in range(s.num_arguments()):
                 terms.append(s.argument(j))
@@ -97,11 +146,14 @@ def _simplify_add(e: Expression) raises -> Expression:
     # Accumulate a single numeric constant and coefficients for each distinct
     # non-numeric "rest" factor.
     var constant = BigDecimal()
+    var numeric_terms = 0
+    var merged_like = False
     var bases = List[Expression]()
     var coefficients = List[BigDecimal]()
     for i in range(len(terms)):
         if terms[i].kind() == ExpressionKind.NUMBER:
             constant = constant + terms[i].value()
+            numeric_terms += 1
             continue
         var coefficient = _leading_coefficient(terms[i])
         var rest = _drop_leading_coefficient(terms[i])
@@ -112,6 +164,7 @@ def _simplify_add(e: Expression) raises -> Expression:
                 break
         if found >= 0:
             coefficients[found] = coefficients[found] + coefficient
+            merged_like = True
         else:
             bases.append(rest^)
             coefficients.append(coefficient^)
@@ -131,11 +184,26 @@ def _simplify_add(e: Expression) raises -> Expression:
     if not constant.is_zero():
         out_terms.append(Expression.number(constant^))
 
+    var result: Expression
     if len(out_terms) == 0:
-        return Expression.number(0)
-    if len(out_terms) == 1:
-        return out_terms[0].copy()
-    return Expression.add(out_terms^)
+        result = Expression.number(0)
+    elif len(out_terms) == 1:
+        result = out_terms[0].copy()
+    else:
+        result = Expression.add(out_terms^)
+
+    # Record the rewrite. Folding constants or merging like terms is
+    # pedagogical; merely dropping zeros / collapsing is trivial bookkeeping.
+    var tag = StepTag.TRIVIAL
+    var rule = String("sum-identities")
+    if merged_like or numeric_terms > 1:
+        tag = StepTag.PEDAGOGICAL
+        rule = String("collect-like-terms")
+    if trace.wants(tag):
+        var before = Expression.add(terms.copy())
+        if result != before:
+            trace.record(tag, rule, before, result)
+    return result^
 
 
 # ===----------------------------------------------------------------------=== #
@@ -143,12 +211,13 @@ def _simplify_add(e: Expression) raises -> Expression:
 # ===----------------------------------------------------------------------=== #
 
 
-def _simplify_multiply(e: Expression) raises -> Expression:
+def _simplify_multiply(e: Expression, mut trace: Trace) raises -> Expression:
     """Simplifies a `Multiply` node: folds the numeric coefficient, collects
     like bases (summing exponents), and applies the zero/one identities.
 
     Args:
         e: The `Multiply` expression.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The simplified expression.
@@ -159,7 +228,7 @@ def _simplify_multiply(e: Expression) raises -> Expression:
     # Simplify and flatten the operands into a single list of factors.
     var factors = List[Expression]()
     for i in range(e.num_arguments()):
-        var s = simplify(e.argument(i))
+        var s = simplify(e.argument(i), trace)
         if s.kind() == ExpressionKind.MULTIPLY:
             for j in range(s.num_arguments()):
                 factors.append(s.argument(j))
@@ -169,11 +238,14 @@ def _simplify_multiply(e: Expression) raises -> Expression:
     # Accumulate a single numeric coefficient and an exponent for each distinct
     # base.
     var coefficient = BigDecimal(1)
+    var numeric_factors = 0
+    var merged_like = False
     var bases = List[Expression]()
     var exponents = List[Expression]()
     for i in range(len(factors)):
         if factors[i].kind() == ExpressionKind.NUMBER:
             coefficient = coefficient * factors[i].value()
+            numeric_factors += 1
             continue
         var base = _power_base(factors[i])
         var exponent = _power_exponent(factors[i])
@@ -183,34 +255,50 @@ def _simplify_multiply(e: Expression) raises -> Expression:
                 found = b
                 break
         if found >= 0:
-            exponents[found] = simplify(exponents[found] + exponent)
+            exponents[found] = simplify(exponents[found] + exponent, trace)
+            merged_like = True
         else:
             bases.append(base^)
             exponents.append(exponent^)
 
-    # A single zero factor annihilates the whole product.
+    var result: Expression
     if coefficient.is_zero():
-        return Expression.number(0)
+        # A single zero factor annihilates the whole product.
+        result = Expression.number(0)
+    else:
+        # Rebuild the surviving factors.
+        var out_factors = List[Expression]()
+        if not (coefficient == BigDecimal(1)):
+            out_factors.append(Expression.number(coefficient^))
+        for b in range(len(bases)):
+            var factor = _make_power(bases[b], exponents[b])
+            # Drop factors that simplified to 1.
+            if (
+                factor.kind() == ExpressionKind.NUMBER
+                and factor.value() == BigDecimal(1)
+            ):
+                continue
+            out_factors.append(factor^)
 
-    # Rebuild the surviving factors.
-    var out_factors = List[Expression]()
-    if not (coefficient == BigDecimal(1)):
-        out_factors.append(Expression.number(coefficient^))
-    for b in range(len(bases)):
-        var factor = _make_power(bases[b], exponents[b])
-        # Drop factors that simplified to 1.
-        if (
-            factor.kind() == ExpressionKind.NUMBER
-            and factor.value() == BigDecimal(1)
-        ):
-            continue
-        out_factors.append(factor^)
+        if len(out_factors) == 0:
+            result = Expression.number(1)
+        elif len(out_factors) == 1:
+            result = out_factors[0].copy()
+        else:
+            result = Expression.multiply(out_factors^)
 
-    if len(out_factors) == 0:
-        return Expression.number(1)
-    if len(out_factors) == 1:
-        return out_factors[0].copy()
-    return Expression.multiply(out_factors^)
+    # Record the rewrite. Folding coefficients or merging like bases is
+    # pedagogical; merely dropping ones / collapsing is trivial bookkeeping.
+    var tag = StepTag.TRIVIAL
+    var rule = String("product-identities")
+    if merged_like or numeric_factors > 1:
+        tag = StepTag.PEDAGOGICAL
+        rule = String("collect-like-factors")
+    if trace.wants(tag):
+        var before = Expression.multiply(factors.copy())
+        if result != before:
+            trace.record(tag, rule, before, result)
+    return result^
 
 
 # ===----------------------------------------------------------------------=== #
@@ -218,12 +306,13 @@ def _simplify_multiply(e: Expression) raises -> Expression:
 # ===----------------------------------------------------------------------=== #
 
 
-def _simplify_power(e: Expression) raises -> Expression:
+def _simplify_power(e: Expression, mut trace: Trace) raises -> Expression:
     """Simplifies a `Power` node: applies the zero/one identities and folds a
     numeric base raised to a non-negative integer exponent.
 
     Args:
         e: The `Power` expression.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The simplified expression.
@@ -231,9 +320,25 @@ def _simplify_power(e: Expression) raises -> Expression:
     Raises:
         Error: If an internal numeric operation fails.
     """
-    var base = simplify(e.argument(0))
-    var exponent = simplify(e.argument(1))
-    return _make_power(base, exponent)
+    var base = simplify(e.argument(0), trace)
+    var exponent = simplify(e.argument(1), trace)
+    var result = _make_power(base, exponent)
+
+    # Record the rewrite. Evaluating a fully numeric power is pedagogical;
+    # the zero/one identities are trivial bookkeeping.
+    var tag = StepTag.TRIVIAL
+    var rule = String("power-identities")
+    if (
+        base.kind() == ExpressionKind.NUMBER
+        and exponent.kind() == ExpressionKind.NUMBER
+    ):
+        tag = StepTag.PEDAGOGICAL
+        rule = String("evaluate-power")
+    if trace.wants(tag):
+        var before = Expression.power(base, exponent)
+        if result != before:
+            trace.record(tag, rule, before, result)
+    return result^
 
 
 def _make_power(base: Expression, exponent: Expression) raises -> Expression:

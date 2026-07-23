@@ -98,8 +98,9 @@ world it is a paid feature. Since our engines are already rule-based in the
 is natural for us, while it is hard to retrofit into a library built around
 fast algorithms. We should bake it in from the beginning.
 
-**The `level` parameter.** The public API takes a parameter `level: Int` that
-controls how much is shown:
+**The `detail` parameter.** The public API takes a parameter `detail: Int`
+that controls how much is shown ("detail" rather than "level", since it names
+what the number is about):
 
 - `0`: show the result only. No recording. The engine is free to take fast
   paths and to normalize aggressively.
@@ -107,23 +108,31 @@ controls how much is shown:
 - `2`: show more steps, at the granularity a textbook would present.
 - `3`: show all steps, including trivial rewrites.
 
-**Tagging.** To make the levels work, every recorded step carries a tag that
+**Tagging.** To make the detail values work, every recorded step carries a tag that
 says how important it is: `core` (the main moves of the derivation, e.g.
 "apply the product rule"), `pedagogical` (smaller but still instructive moves,
 e.g. "collect like terms"), and `trivial` (bookkeeping rewrites, e.g.
 `x*1 -> x`, flattening). The mapping is cumulative: a `core` step is shown at
-level >= 1, a `pedagogical` step at level >= 2, a `trivial` step at level >= 3.
-Level 0 records nothing. The tag is assigned at the place where the rule is
-applied, since only the rule itself knows how important it is.
+detail >= 1, a `pedagogical` step at detail >= 2, a `trivial` step at
+detail >= 3. Detail 0 records nothing. The tag is assigned at the place where
+the rule is applied, since only the rule itself knows how important it is.
+Tagging will be a enum in the future when Mojo support enums. For now,
+it can be a struct of an `UInt8` field that mimics an enum.
 
 **Data model.** Two small types, living in their own `steps` module:
 
 - `Step`: the tag, the rule name (e.g. `"product-rule"`), the expression
-  before, the expression after, and the position of the rewritten
-  subexpression in the whole tree.
-- `Trace`: the requested `level` plus a `List[Step]`. Its `record(...)` method
-  checks the tag against the level and returns immediately when the step is
-  filtered out, so the level-0 path pays almost nothing.
+  before, and the expression after. A position (path) of the rewritten
+  subexpression in the whole tree is deferred: the `before` expression itself
+  identifies the rewritten subexpression well enough for text rendering, and
+  threading a path through every engine can wait until a renderer needs it.
+- `Trace`: the requested `detail` plus a `List[Step]`. Its `record(...)`
+  method checks the tag against the detail and returns immediately when the
+  step is filtered out, so the detail-0 path pays almost nothing. Note that a
+  `Trace` is deliberately not just a `List[Expression]`: a bare sequence of
+  intermediate forms shows *what* the forms were but not *why* each follows
+  from the previous one. The rule name is the pedagogical content, and the
+  tag is what makes filtering by detail possible.
 
 **Decoupling.** The design principle is that the engines record and the
 printer renders; neither knows about the other's job:
@@ -136,27 +145,61 @@ printer renders; neither knows about the other's job:
   parameter.
 - The engines never format text. Rendering a `Trace` (plain text first, LaTeX
   later) belongs to `printer`.
-- The public wrappers keep the simple signatures: `differentiate(e, "x")`
-  behaves as today, and `differentiate(e, "x", level=2)` returns the result
-  together with the trace.
+- The public API is a pair of overloads with different return types.
+  `differentiate(e, "x")` behaves as today and returns a plain `Expression`,
+  which matches SymPy's model. `differentiate(e, "x", detail=n)` resolves to
+  the second overload and returns a `Derivation`, a small wrapper holding the
+  answer and the trace:
+
+  ```mojo
+  struct Derivation:
+      var input: Expression   # the problem statement, e.g. d/dx(x**2)
+      var result: Expression  # the answer
+      var trace: Trace        # the recorded steps
+  ```
+
+  The `input` field stores the expression the computation started from
+  (differentiation stores the marker form `d/dvar(e)`), so that `print(d)`
+  opens with the problem, then the steps, then the result — a complete worked
+  exercise. Note that it is the `Expression` itself, not its source text, so
+  rendering is always canonical.
+
+  The two overloads differ in arity (`detail` has no default value, otherwise
+  the two-argument call would be ambiguous), so resolution is unambiguous and
+  fully type safe; the user sees from the signature and the LSP which one they
+  get. `print(d.result)` prints the expression per se; `print(d.trace)`
+  renders the steps down to and including the final result.
+
+**Decision: the trace does not live on `Expression`.** It is tempting to add
+`steps` and `detail` fields to `Expression` itself, so that `differentiate`
+could keep a single return type. We considered and rejected this. `Expression`
+is the recursive tree node, so every node in every tree would carry the fields
+while only the root of a traced computation ever uses them — and the cost is
+recursive, since the `before`/`after` expressions inside a step are themselves
+`Expression`s carrying their own dead fields. Worse, the fields would poison
+structural equality and hashing: two structurally identical expressions with
+different traces must still compare equal, so every builder and every engine
+would have to decide how to propagate the fields on each construction and
+copy. SymPy faced the same choice and also keeps `Expr` free of step data.
+The `Derivation` wrapper gives the same ergonomics without touching `core`.
 
 **Interaction with the rest of the design.**
 
 - Step traces require the intermediate forms to actually exist. This settles
   the open question below about eager normalization: `core` builders stay
   lazy, and normalization lives in `simplify` where it can be recorded. Only
-  at level 0 may the engine normalize aggressively or switch to fast
+  at detail 0 may the engine normalize aggressively or switch to fast
   algorithms, because nobody is watching.
 - For differentiation and `simplify`, the human steps and the algorithm steps
   coincide, so one implementation serves both. For integration and factoring
   (M7+) they diverge: fast algorithms (Risch-style integration, modern
   factoring) do not correspond to human steps. When we optimize those, we keep
-  the rule-based traceable path alongside the fast one — the `level` parameter
-  then also selects which path runs. This is the same reason SymPy keeps
+  the rule-based traceable path alongside the fast one — the `detail`
+  parameter then also selects which path runs. This is the same reason SymPy keeps
   `manualintegrate` next to `risch`; we just plan for it up front.
 - The trace is also our best debugging tool: when `simplify` produces a wrong
-  form or a rule fails to fire, running at level 3 shows exactly which rewrite
-  did it. So the feature pays off internally before any end user sees it.
+  form or a rule fails to fire, running at detail 3 shows exactly which
+  rewrite did it. So the feature pays off internally before any end user sees it.
 
 ### `linear_algebra` (stretch goal)
 
@@ -169,11 +212,12 @@ printer renders; neither knows about the other's job:
 3. `simplify` — needed before algebra/calculus produce readable results.
 4. `functions` and `algebra` — can proceed in parallel once simplify exists.
 5. `calculus` — depends on `core`, `simplify`, and `functions`.
-6. `numeric` — substitution + Decimo-backed evaluation, ties symbolic to exact.
-7. `parser` string DSL — convenience layer once the tree API is stable.
-8. `steps` — the trace types can land any time after `core`, but wiring them
-   through `simplify` and `calculus` and rendering them is best done once the
-   printer is solid, so it slots here.
+6. `steps` — moved up from a late slot: the recording plumbing goes in while
+   `simplify` and `calculus` are still small, since the retrofitting cost only
+   grows as rules accumulate. Every rule written after this point records its
+   step from birth. Fancy rendering (LaTeX) can trail behind.
+7. `numeric` — substitution + Decimo-backed evaluation, ties symbolic to exact.
+8. `parser` string DSL — convenience layer once the tree API is stable.
 9. `linear_algebra` — stretch goal, last.
 
 Decimo slots in early: as the concrete number type inside `Number` nodes and as
@@ -194,14 +238,20 @@ the evaluation backend in `numeric`.
   rules, with derivative rules for `sin`, `cos`, `exp`, `log`, `sqrt`. Results
   are passed through `simplify`. Covered by
   `tests/calculus/test_differentiation.mojo`.
-- **M4:** `numeric.subs` / `evalf` against Decimo at configurable precision.
-- **M5:** string DSL parser; `algebra` expand/collect.
-- **M6:** `steps` — the `Step`/`Trace` types, tagging in `simplify` and
-  `calculus.differentiation`, the `level` parameter on the public API, and
-  plain-text rendering of a trace in `printer`.
+- **M4 (done):** `steps` — the `StepTag`/`Step`/`Trace`/`Derivation` types,
+  tagging in `simplify` and `calculus.differentiation`, the `detail` overloads
+  on the public API, and plain-text rendering (the types render themselves via
+  `Writable`, mirroring how `Expression` prints; `printer.to_string` has
+  matching overloads). Differentiation records steps top-down like a textbook,
+  using an inert `d/dvar(...)` function node for a derivative that a later
+  step resolves; `simplify` records bottom-up, since a rewrite is only known
+  once computed. Covered by `tests/steps/test_steps.mojo`.
+- **M5:** `numeric.subs` / `evalf` against Decimo at configurable precision.
+- **M6:** string DSL parser; `algebra` expand/collect, with rules tagged as
+  they are written.
 - **M7+:** factoring, integration, limits, `linear_algebra`. Fast algorithms
   introduced here keep the rule-based traceable path alongside, selected by
-  `level`.
+  `detail`.
 
 ## Open questions
 
@@ -214,9 +264,10 @@ the evaluation backend in `numeric`.
   `simplify`. Too much eager work makes `core` heavy; too little makes every
   other module defensive. The `steps` design leans this toward "lazy": a step
   trace needs the intermediate forms to exist, so eager normalization is only
-  acceptable when `level == 0`.
-- How to make the level-0 path truly zero-cost. Passing a `Trace` and checking
-  the level at runtime is cheap but not free. Mojo's compile-time parameters
+  acceptable when `detail == 0`.
+- How to make the detail-0 path truly zero-cost. Passing a `Trace` and
+  checking the detail at runtime is cheap but not free. Mojo's compile-time
+  parameters
   offer an alternative — e.g. `differentiate[recording: Bool]` — so the
   non-recording version compiles with no trace code at all. Worth trying once
   the runtime version works; the risk is doubling the compiled code.

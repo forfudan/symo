@@ -14,3 +14,4 @@ from symo.core import Expression, ExpressionKind
 from symo.printer import to_string
 from symo.simplify import simplify
 from symo.calculus import differentiate
+from symo.steps import Derivation, Step, StepTag, Trace

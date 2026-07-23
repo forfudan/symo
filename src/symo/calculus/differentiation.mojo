@@ -31,12 +31,20 @@ rules:
 
 The result is passed through `simplify`, so `d/dx (x**2)` comes back as `2*x`
 rather than `2*x**1*1`.
+
+The engine records its steps into a `Trace` (see `symo.steps`). The
+`differentiate(e, variable, detail=n)` overload returns a `Derivation` holding
+the answer together with the recorded steps. Steps are recorded *before*
+recursing into subexpressions, so the trace reads top-down like a textbook
+derivation; a not-yet-computed derivative appears in a step as an inert
+function node `d/dvar(...)` that a later step resolves.
 """
 
 from decimo import BigDecimal
 
 from symo.core.expression import Expression, ExpressionKind
 from symo.simplify.simplify import simplify
+from symo.steps.steps import Derivation, StepTag, Trace
 
 
 def differentiate(e: Expression, variable: String) raises -> Expression:
@@ -53,15 +61,68 @@ def differentiate(e: Expression, variable: String) raises -> Expression:
         Error: If the expression contains a function with no known derivative
             rule, or an internal numeric operation fails.
     """
-    return simplify(_differentiate(e, variable))
+    var trace = Trace(0)
+    return differentiate(e, variable, trace)
 
 
-def _differentiate(e: Expression, variable: String) raises -> Expression:
+def differentiate(
+    e: Expression, variable: String, mut trace: Trace
+) raises -> Expression:
+    """Differentiates an expression, recording steps into a caller's trace.
+
+    This is the engine entry point for callers that thread their own `Trace`
+    through several computations. Most users want the `detail` overload
+    instead.
+
+    Args:
+        e: The expression to differentiate.
+        variable: The name of the symbol to differentiate with respect to.
+        trace: The trace that receives the recorded steps.
+
+    Returns:
+        The simplified derivative.
+
+    Raises:
+        Error: If the expression contains a function with no known derivative
+            rule, or an internal numeric operation fails.
+    """
+    var raw = _differentiate(e, variable, trace)
+    return simplify(raw, trace)
+
+
+def differentiate(
+    e: Expression, variable: String, detail: Int
+) raises -> Derivation:
+    """Differentiates an expression and returns the answer with its steps.
+
+    Args:
+        e: The expression to differentiate.
+        variable: The name of the symbol to differentiate with respect to.
+        detail: How much to record: `0` nothing, `1` core steps, `2` also
+            pedagogical steps, `3` everything including trivial rewrites.
+
+    Returns:
+        A `Derivation` holding the problem statement (as `d/dvar(e)`), the
+        simplified derivative, and the trace.
+
+    Raises:
+        Error: If the expression contains a function with no known derivative
+            rule, or an internal numeric operation fails.
+    """
+    var trace = Trace(detail)
+    var result = differentiate(e, variable, trace)
+    return Derivation(_pending(variable, e), result^, trace^)
+
+
+def _differentiate(
+    e: Expression, variable: String, mut trace: Trace
+) raises -> Expression:
     """Computes the raw (unsimplified) derivative of an expression.
 
     Args:
         e: The expression to differentiate.
         variable: The name of the differentiation variable.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The unsimplified derivative.
@@ -71,19 +132,40 @@ def _differentiate(e: Expression, variable: String) raises -> Expression:
     """
     var k = e.kind()
     if k == ExpressionKind.NUMBER:
+        if trace.wants(StepTag.TRIVIAL):
+            trace.record(
+                StepTag.TRIVIAL,
+                "constant-rule",
+                _pending(variable, e),
+                Expression.number(0),
+            )
         return Expression.number(0)
     if k == ExpressionKind.SYMBOL:
         if e.name() == variable:
+            if trace.wants(StepTag.TRIVIAL):
+                trace.record(
+                    StepTag.TRIVIAL,
+                    "variable-rule",
+                    _pending(variable, e),
+                    Expression.number(1),
+                )
             return Expression.number(1)
+        if trace.wants(StepTag.TRIVIAL):
+            trace.record(
+                StepTag.TRIVIAL,
+                "constant-rule",
+                _pending(variable, e),
+                Expression.number(0),
+            )
         return Expression.number(0)
     if k == ExpressionKind.ADD:
-        return _differentiate_sum(e, variable)
+        return _differentiate_sum(e, variable, trace)
     if k == ExpressionKind.MULTIPLY:
-        return _differentiate_product(e, variable)
+        return _differentiate_product(e, variable, trace)
     if k == ExpressionKind.POWER:
-        return _differentiate_power(e, variable)
+        return _differentiate_power(e, variable, trace)
     if k == ExpressionKind.FUNCTION:
-        return _differentiate_function(e, variable)
+        return _differentiate_function(e, variable, trace)
     return Expression.number(0)
 
 
@@ -92,12 +174,15 @@ def _differentiate(e: Expression, variable: String) raises -> Expression:
 # ===----------------------------------------------------------------------=== #
 
 
-def _differentiate_sum(e: Expression, variable: String) raises -> Expression:
+def _differentiate_sum(
+    e: Expression, variable: String, mut trace: Trace
+) raises -> Expression:
     """Applies the sum rule: differentiate each term.
 
     Args:
         e: The `Add` expression.
         variable: The name of the differentiation variable.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The derivative.
@@ -105,14 +190,24 @@ def _differentiate_sum(e: Expression, variable: String) raises -> Expression:
     Raises:
         Error: If a function has no known derivative rule.
     """
+    if trace.wants(StepTag.PEDAGOGICAL):
+        var pending_terms = List[Expression]()
+        for i in range(e.num_arguments()):
+            pending_terms.append(_pending(variable, e.argument(i)))
+        trace.record(
+            StepTag.PEDAGOGICAL,
+            "sum-rule",
+            _pending(variable, e),
+            Expression.add(pending_terms^),
+        )
     var terms = List[Expression]()
     for i in range(e.num_arguments()):
-        terms.append(_differentiate(e.argument(i), variable))
+        terms.append(_differentiate(e.argument(i), variable, trace))
     return Expression.add(terms^)
 
 
 def _differentiate_product(
-    e: Expression, variable: String
+    e: Expression, variable: String, mut trace: Trace
 ) raises -> Expression:
     """Applies the product rule to an n-ary product.
 
@@ -122,6 +217,7 @@ def _differentiate_product(
     Args:
         e: The `Multiply` expression.
         variable: The name of the differentiation variable.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The derivative.
@@ -130,12 +226,28 @@ def _differentiate_product(
         Error: If a function has no known derivative rule.
     """
     var n = e.num_arguments()
+    if trace.wants(StepTag.CORE):
+        var pending_terms = List[Expression]()
+        for i in range(n):
+            var pending_factors = List[Expression]()
+            for j in range(n):
+                if j == i:
+                    pending_factors.append(_pending(variable, e.argument(j)))
+                else:
+                    pending_factors.append(e.argument(j))
+            pending_terms.append(Expression.multiply(pending_factors^))
+        trace.record(
+            StepTag.CORE,
+            "product-rule",
+            _pending(variable, e),
+            Expression.add(pending_terms^),
+        )
     var terms = List[Expression]()
     for i in range(n):
         var factors = List[Expression]()
         for j in range(n):
             if j == i:
-                factors.append(_differentiate(e.argument(j), variable))
+                factors.append(_differentiate(e.argument(j), variable, trace))
             else:
                 factors.append(e.argument(j))
         terms.append(Expression.multiply(factors^))
@@ -147,7 +259,9 @@ def _differentiate_product(
 # ===----------------------------------------------------------------------=== #
 
 
-def _differentiate_power(e: Expression, variable: String) raises -> Expression:
+def _differentiate_power(
+    e: Expression, variable: String, mut trace: Trace
+) raises -> Expression:
     """Differentiates a `Power` node.
 
     For a constant exponent `c`, uses the power rule
@@ -157,6 +271,7 @@ def _differentiate_power(e: Expression, variable: String) raises -> Expression:
     Args:
         e: The `Power` expression.
         variable: The name of the differentiation variable.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The derivative.
@@ -166,19 +281,41 @@ def _differentiate_power(e: Expression, variable: String) raises -> Expression:
     """
     var base = e.argument(0)
     var exponent = e.argument(1)
-    var base_derivative = _differentiate(base, variable)
 
     if exponent.kind() == ExpressionKind.NUMBER:
         var c = exponent.value()
         var reduced = Expression.number(c - BigDecimal(1))
+        if trace.wants(StepTag.CORE):
+            var pending_factors = List[Expression]()
+            pending_factors.append(Expression.number(c.copy()))
+            pending_factors.append(Expression.power(base, reduced))
+            pending_factors.append(_pending(variable, base))
+            trace.record(
+                StepTag.CORE,
+                "power-rule",
+                _pending(variable, e),
+                Expression.multiply(pending_factors^),
+            )
+        var base_derivative = _differentiate(base, variable, trace)
         var factors = List[Expression]()
         factors.append(Expression.number(c.copy()))
         factors.append(Expression.power(base, reduced))
         factors.append(base_derivative^)
         return Expression.multiply(factors^)
 
-    var exponent_derivative = _differentiate(exponent, variable)
     var log_base = _unary_function("log", base)
+    if trace.wants(StepTag.CORE):
+        var pending_bracket = (_pending(variable, exponent) * log_base) + (
+            exponent * _pending(variable, base) / base
+        )
+        trace.record(
+            StepTag.CORE,
+            "general-power-rule",
+            _pending(variable, e),
+            Expression.power(base, exponent) * pending_bracket,
+        )
+    var base_derivative = _differentiate(base, variable, trace)
+    var exponent_derivative = _differentiate(exponent, variable, trace)
     var bracket = (exponent_derivative * log_base) + (
         exponent * base_derivative / base
     )
@@ -186,13 +323,14 @@ def _differentiate_power(e: Expression, variable: String) raises -> Expression:
 
 
 def _differentiate_function(
-    e: Expression, variable: String
+    e: Expression, variable: String, mut trace: Trace
 ) raises -> Expression:
     """Applies the chain rule to an elementary `Function` node.
 
     Args:
         e: The `Function` expression (single argument).
         variable: The name of the differentiation variable.
+        trace: The trace that receives the recorded steps.
 
     Returns:
         The derivative.
@@ -208,7 +346,6 @@ def _differentiate_function(
         )
     var name = e.name()
     var u = e.argument(0)
-    var inner_derivative = _differentiate(u, variable)
 
     var outer: Expression
     if name == "sin":
@@ -228,12 +365,39 @@ def _differentiate_function(
             + name
             + "'"
         )
+    if trace.wants(StepTag.CORE):
+        trace.record(
+            StepTag.CORE,
+            "chain-rule",
+            _pending(variable, e),
+            outer * _pending(variable, u),
+        )
+    var inner_derivative = _differentiate(u, variable, trace)
     return outer * inner_derivative
 
 
 # ===----------------------------------------------------------------------=== #
 # Helpers
 # ===----------------------------------------------------------------------=== #
+
+
+def _pending(variable: String, e: Expression) -> Expression:
+    """Builds the inert `d/dvar(e)` marker used only inside traces.
+
+    The marker is an ordinary `Function` node named `d/dvar`, so it prints as
+    `d/dx(e)` with no printer support needed. It stands for a derivative that
+    a later step computes; it never appears in a returned result.
+
+    Args:
+        variable: The name of the differentiation variable.
+        e: The expression whose derivative is pending.
+
+    Returns:
+        The marker expression.
+    """
+    var arguments = List[Expression]()
+    arguments.append(e.copy())
+    return Expression.function(String("d/d") + variable, arguments^)
 
 
 def _unary_function(name: String, argument: Expression) -> Expression:
