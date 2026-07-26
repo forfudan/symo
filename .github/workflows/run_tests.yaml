@@ -86,7 +86,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: [core, simplify, calculus, steps, numeric]
+        module: [core, simplify, calculus, steps, numeric, parser]
     steps:
       - uses: actions/checkout@v4
       - uses: prefix-dev/setup-pixi@v0.9.5

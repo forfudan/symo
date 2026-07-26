@@ -80,6 +80,13 @@ def test_result_equals_expected_tree() raises:
     assert_true(simplify(x + x) == Expression.number(2) * x)
 
 
+def test_string_overload() raises:
+    """The string overloads parse their input, then simplify it."""
+    assert_equal(String(simplify("2 * x + 3 * x + 1")), "5*x + 1")
+    var derivation = simplify("x + x", detail=1)
+    assert_equal(String(derivation.result), "2*x")
+
+
 def main() raises:
     test_constant_folding()
     test_additive_identities()
@@ -88,4 +95,5 @@ def main() raises:
     test_like_base_collection()
     test_mixed_expression()
     test_result_equals_expected_tree()
+    test_string_overload()
     print("simplify: all tests passed")

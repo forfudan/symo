@@ -41,6 +41,7 @@ parents), each with the subexpression before and after the rewrite.
 from decimo import BigDecimal
 
 from symo.core.expression import Expression, ExpressionKind
+from symo.parser.parser import parse
 from symo.steps.steps import Derivation, StepTag, Trace
 
 
@@ -112,6 +113,45 @@ def simplify(expression: Expression, detail: Int) raises -> Derivation:
     var trace = Trace(detail)
     var result = simplify(expression, trace)
     return Derivation(expression.copy(), result^, trace^)
+
+
+def simplify(text: String) raises -> Expression:
+    """Parses an expression string, then simplifies it.
+
+    A convenience overload equivalent to `simplify(parse(text))`.
+
+    Args:
+        text: The expression to simplify, in the string DSL, e.g. `"x + x + 0"`.
+
+    Returns:
+        A simplified, structurally-equivalent expression.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If an internal numeric operation fails.
+    """
+    return simplify(parse(text))
+
+
+def simplify(text: String, detail: Int) raises -> Derivation:
+    """Parses an expression string, then simplifies it, keeping the steps.
+
+    A convenience overload equivalent to `simplify(parse(text), detail)`.
+
+    Args:
+        text: The expression to simplify, in the string DSL, e.g. `"x + x + 0"`.
+        detail: How much to record: `0` nothing, `1` core steps, `2` also
+            pedagogical steps, `3` everything including trivial rewrites.
+
+    Returns:
+        A `Derivation` holding the input expression, the simplified
+        expression, and the trace.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If an internal numeric operation fails.
+    """
+    return simplify(parse(text), detail)
 
 
 # ===----------------------------------------------------------------------=== #

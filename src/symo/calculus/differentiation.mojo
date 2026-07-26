@@ -43,6 +43,8 @@ function node `d/dvar(...)` that a later step resolves.
 from decimo import BigDecimal
 
 from symo.core.expression import Expression, ExpressionKind
+from symo.errors import ValueError
+from symo.parser.parser import parse
 from symo.simplify.simplify import simplify
 from symo.steps.steps import Derivation, StepTag, Trace
 
@@ -114,6 +116,54 @@ def differentiate(
     var trace = Trace(detail)
     var result = differentiate(expression, variable, trace)
     return Derivation(_pending(variable, expression), result^, trace^)
+
+
+def differentiate(text: String, variable: String) raises -> Expression:
+    """Parses an expression string, then differentiates it.
+
+    A convenience overload equivalent to `differentiate(parse(text), variable)`.
+
+    Args:
+        text: The expression to differentiate, in the string DSL, e.g.
+            `"x**2 + 3*x - 1"`.
+        variable: The name of the symbol to differentiate with respect to.
+
+    Returns:
+        The simplified derivative.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If the expression contains a function with no known derivative
+            rule, or an internal numeric operation fails.
+    """
+    return differentiate(parse(text), variable)
+
+
+def differentiate(
+    text: String, variable: String, detail: Int
+) raises -> Derivation:
+    """Parses an expression string, then differentiates it, keeping the steps.
+
+    A convenience overload equivalent to
+    `differentiate(parse(text), variable, detail)`.
+
+    Args:
+        text: The expression to differentiate, in the string DSL, e.g.
+            `"x**2 + 3*x - 1"`.
+        variable: The name of the symbol to differentiate with respect to.
+        detail: How much to record: `0` nothing, `1` core steps, `2` also
+            pedagogical steps, `3` everything including trivial rewrites.
+
+    Returns:
+        A `Derivation` holding the problem statement (as `d/dvar(expression)`), the
+        simplified derivative, and the trace.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If the expression contains a function with no known derivative
+            rule, or an internal numeric operation fails.
+    """
+    return differentiate(parse(text), variable, detail)
 
 
 def _differentiate(
@@ -345,10 +395,11 @@ def _differentiate_function(
         Error: If the function is not unary, or has no known derivative rule.
     """
     if expression.num_arguments() != 1:
-        raise Error(
-            String("differentiate: only unary functions are supported, got '")
+        raise ValueError(
+            message=String("only unary functions are supported, got '")
             + expression.name()
-            + "'"
+            + "'",
+            function="_differentiate_function()",
         )
     var name = expression.name()
     var u = expression.argument(0)
@@ -366,10 +417,9 @@ def _differentiate_function(
         var two_sqrt = Expression.number(2) * _unary_function("sqrt", u)
         outer = Expression.number(1) / two_sqrt
     else:
-        raise Error(
-            String("differentiate: no derivative rule for function '")
-            + name
-            + "'"
+        raise ValueError(
+            message=String("no derivative rule for function '") + name + "'",
+            function="_differentiate_function()",
         )
     if trace.wants(StepTag.CORE):
         trace.record(

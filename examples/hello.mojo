@@ -29,6 +29,8 @@ def main() raises:
     print(differentiate(x**3 + 3 * x - 1, "x"))  # 3*x**2 + 3
     print(differentiate(x * y, "x"))  # y
 
+    # The engines accept a string directly, parsing it for you.
+    print(differentiate("a**2 + 3 * a - 1", "a"))  # 2*a + 3
     print(
-        differentiate(x**2 + 3 * x - 1, "x", detail=3)
+        differentiate("a**2 + 3 * a - 1", "a", detail=3)
     )  # Print all steps of the derivation.

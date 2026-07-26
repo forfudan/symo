@@ -11,3 +11,5 @@ numeric literals become Decimo-backed `Number` nodes. It is distinct from
 Decimo's numeric expression evaluator, which produces a number rather than a
 tree.
 """
+
+from symo.parser.parser import parse

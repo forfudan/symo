@@ -73,6 +73,13 @@ def test_reciprocal() raises:
     assert_equal(String(differentiate(1 / x, "x")), "-1/x**2")
 
 
+def test_string_overload() raises:
+    """The string overloads parse their input, then differentiate it."""
+    assert_equal(String(differentiate("a**2 + 3 * a - 1", "a")), "2*a + 3")
+    var derivation = differentiate("a**2 + 3 * a - 1", "a", detail=3)
+    assert_equal(String(derivation.result), "2*a + 3")
+
+
 def main() raises:
     test_constant_and_symbol()
     test_power_rule()
@@ -80,4 +87,5 @@ def main() raises:
     test_product_rule()
     test_chain_rule_functions()
     test_reciprocal()
+    test_string_overload()
     print("differentiation: all tests passed")

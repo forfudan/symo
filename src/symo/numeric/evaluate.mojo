@@ -39,6 +39,8 @@ from decimo.bigdecimal.exponential import exp, ln, power, sqrt
 from decimo.bigdecimal.trigonometric import cos, sin
 
 from symo.core.expression import Expression, ExpressionKind
+from symo.errors import RuntimeError, ValueError
+from symo.parser.parser import parse
 
 # The default precision (in significant digits) used by `evaluate` when the
 # caller does not request one. Matches Decimo's own default context precision.
@@ -138,6 +140,76 @@ def substitute(
     return substitute(expression, variable, Expression.number(value))
 
 
+def substitute(
+    text: String, variable: String, replacement: Expression
+) raises -> Expression:
+    """Parses an expression string, then substitutes into it.
+
+    A convenience overload equivalent to
+    `substitute(parse(text), variable, replacement)`.
+
+    Args:
+        text: The expression to substitute into, in the string DSL.
+        variable: The name of the symbol to replace.
+        replacement: The expression to put in its place.
+
+    Returns:
+        A copy of the parsed expression with every `Symbol` named `variable`
+        replaced.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If an internal operation fails.
+    """
+    return substitute(parse(text), variable, replacement)
+
+
+def substitute(
+    text: String, variable: String, value: BigDecimal
+) raises -> Expression:
+    """Parses an expression string, then substitutes a `BigDecimal` value.
+
+    A convenience overload equivalent to
+    `substitute(parse(text), variable, value)`.
+
+    Args:
+        text: The expression to substitute into, in the string DSL.
+        variable: The name of the symbol to replace.
+        value: The numeric value to put in its place.
+
+    Returns:
+        A copy of the parsed expression with every `Symbol` named `variable`
+        replaced by the number.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If an internal operation fails.
+    """
+    return substitute(parse(text), variable, value)
+
+
+def substitute(text: String, variable: String, value: Int) raises -> Expression:
+    """Parses an expression string, then substitutes an integer value.
+
+    A convenience overload equivalent to
+    `substitute(parse(text), variable, value)`.
+
+    Args:
+        text: The expression to substitute into, in the string DSL.
+        variable: The name of the symbol to replace.
+        value: The integer value to put in its place.
+
+    Returns:
+        A copy of the parsed expression with every `Symbol` named `variable`
+        replaced by the number.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If an internal operation fails.
+    """
+    return substitute(parse(text), variable, value)
+
+
 # ===----------------------------------------------------------------------=== #
 # Numeric evaluation
 # ===----------------------------------------------------------------------=== #
@@ -169,10 +241,11 @@ def evaluate(
     if k == ExpressionKind.NUMBER:
         return expression.value()
     if k == ExpressionKind.SYMBOL:
-        raise Error(
-            String("evaluate: cannot evaluate free symbol '")
+        raise ValueError(
+            message=String("cannot evaluate free symbol '")
             + expression.name()
-            + "'; substitute it with a value first"
+            + "'; substitute it with a value first",
+            function="evaluate()",
         )
     if k == ExpressionKind.ADD:
         var total = BigDecimal()
@@ -190,7 +263,34 @@ def evaluate(
         return power(base, exponent, precision)
     if k == ExpressionKind.FUNCTION:
         return _evaluate_function(expression, precision)
-    raise Error("evaluate: unsupported expression kind")
+    raise RuntimeError(
+        message="unsupported expression kind", function="evaluate()"
+    )
+
+
+def evaluate(
+    text: String, precision: Int = _DEFAULT_PRECISION
+) raises -> BigDecimal:
+    """Parses an expression string, then evaluates it numerically.
+
+    A convenience overload equivalent to `evaluate(parse(text), precision)`.
+    The parsed expression must contain no free symbols; substitute them first.
+
+    Args:
+        text: The expression to evaluate, in the string DSL. It must contain
+            no free symbols.
+        precision: The number of significant digits to compute with. Defaults
+            to Decimo's own default context precision.
+
+    Returns:
+        The numeric value.
+
+    Raises:
+        ParseError: If `text` is not a valid expression.
+        Error: If the expression contains a free symbol, an unknown function,
+            or an internal numeric operation fails.
+    """
+    return evaluate(parse(text), precision)
 
 
 def _evaluate_function(
@@ -213,10 +313,11 @@ def _evaluate_function(
         Error: If the function is not unary or has no numeric implementation.
     """
     if expression.num_arguments() != 1:
-        raise Error(
-            String("evaluate: only unary functions are supported, got '")
+        raise ValueError(
+            message=String("only unary functions are supported, got '")
             + expression.name()
-            + "'"
+            + "'",
+            function="_evaluate_function()",
         )
     var name = expression.name()
     var argument = evaluate(expression.argument(0), precision)
@@ -230,8 +331,7 @@ def _evaluate_function(
         return ln(argument, precision)
     if name == "sqrt":
         return sqrt(argument, precision)
-    raise Error(
-        String("evaluate: no numeric implementation for function '")
-        + name
-        + "'"
+    raise ValueError(
+        message=String("no numeric implementation for function '") + name + "'",
+        function="_evaluate_function()",
     )

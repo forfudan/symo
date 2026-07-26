@@ -70,8 +70,8 @@ d/dx(x**2 + 3*x - 1)
   `Power`, `Function`, with structural equality, hashing, and immutability.
   `Number` starts on Decimo's `BigInt`/`BigDecimal`; exact fractions arrive
   later via Decimo's `Rational`.
-- **Construction** — operator overloading (`+ - * / **`) and an optional
-  string DSL (`"x**2 + 3*x - 1"`).
+- **Construction** — operator overloading (`+ - * / **`) and a string DSL
+  parser (`parse("x**2 + 3*x - 1")`) that discovers symbols on its own.
 - **Simplification** — constant folding, like-term collection, canonical
   ordering, identity rules.
 - **Algebra** — polynomial expand/collect/factor, rational simplification,

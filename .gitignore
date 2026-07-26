@@ -19,3 +19,6 @@ docs/api/
 # Python
 __pycache__/
 *.pyc
+
+# Local files
+local/

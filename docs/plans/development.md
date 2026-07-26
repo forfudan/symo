@@ -70,16 +70,28 @@ reading — loop indices `i`/`j`, and `x`/`y` for symbols in tests and examples.
 ### `parser` — construction
 
 - Operator overloading (`+ - * / **`) on `Expression` for natural Mojo syntax.
-- Optional string DSL (`"x**2 + 3*x - 1"` -> `Expression`).
-- The string DSL is what removes the need to declare symbols up front: today we
-  write `var x = Expression.symbol("x")` before building an expression, but once
-  the parser lands, `parse("x + x")` will discover `x` on its own and hand back a
-  ready expression. Identifiers become symbols, numeric literals become
-  Decimo-backed numbers.
+- String DSL (`"x**2 + 3*x - 1"` -> `Expression`), landed in M6.
+- The string DSL removes the need to declare symbols up front: instead of
+  writing `var x = Expression.symbol("x")` before building an expression,
+  `parse("x + x")` discovers `x` on its own and hands back a ready expression.
+  Identifiers become symbols, numeric literals become Decimo-backed numbers.
 - **Decision:** the symbolic parser lives in Symo, not Decimo. Decimo's parser
   is a numeric evaluator (shunting-yard -> value) and does not preserve unbound
-  symbols or produce a tree. Symo can borrow tokenizer ideas but needs its own
+  symbols or produce a tree. Symo borrows tokenizer ideas but needs its own
   tree-producing parser.
+- **How it improves on Decimo's parser.** (1) It produces an `Expression`
+  *tree*, not a number, so free symbols survive. (2) It is a Pratt
+  (precedence-climbing) parser going tokens -> tree in one pass, rather than
+  tokens -> RPN -> value in two. (3) Function names are open: any
+  `identifier(...)` becomes a `Function` node, with no fixed list of known
+  functions baked into the lexer. (4) The tokenizer emits one `IDENTIFIER`
+  kind and leaves symbol-vs-function classification (and unary-vs-binary
+  minus) to the parser, since — unlike Decimo — Symo needs no value for a
+  name.
+- **Deferred:** implicit multiplication (`2x`, `2(x+1)`, `(x+1)(x-1)`). It is
+  a genuine convenience but interacts subtly with function calls and unary
+  minus, so the first parser rejects it with a clear position-tagged error
+  rather than guess. The tokenizer/parser split leaves room to add it later.
 
 ### `simplify`
 
@@ -115,6 +127,19 @@ reading — loop indices `i`/`j`, and `x`/`y` for symbols in tests and examples.
 
 - Infix string printer (correct precedence, minimal parentheses).
 - LaTeX output (later).
+
+### `errors` — typed errors
+
+- Symo reuses Decimo's `DecimoError` machinery rather than reimplementing it:
+  the type captures the source file and line at the raise site and renders a
+  Python-style traceback, with the `error_type` parameter as the label shown.
+- `symo/errors.mojo` re-exports Decimo's general error types (`ValueError`,
+  `RuntimeError`, ...) and adds Symo-specific ones (`ParseError`) as
+  parametrizations of `DecimoError`, so the whole library imports errors from
+  one module.
+- Raise with keyword arguments, always naming the raising function (Mojo has
+  no runtime function-name introspection):
+  `raise ParseError(message="...", function="parse()")`.
 
 ### `steps` — step-by-step traces
 
@@ -282,8 +307,12 @@ the evaluation backend in `numeric`.
   `sin`/`cos`/`exp`/`log` (natural)/`sqrt` to Decimo at a requested precision
   and raising on a surviving free symbol. Covered by
   `tests/numeric/test_numeric.mojo`.
-- **M6:** string DSL parser; `algebra` expand/collect, with rules tagged as
-  they are written.
+- **M6 (parser done):** string-DSL `parser` — a Pratt parser producing an
+  `Expression` tree with auto-discovered symbols and open function names, plus
+  the `errors` module (typed errors reusing Decimo's `DecimoError`, with the
+  existing engines retrofitted to raise them). Covered by
+  `tests/parser/test_parser.mojo`. Still open in M6: `algebra` expand/collect,
+  with rules tagged as they are written.
 - **M7+:** factoring, integration, limits, `linear_algebra`. Fast algorithms
   introduced here keep the rule-based traceable path alongside, selected by
   `detail`.

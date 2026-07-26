@@ -116,6 +116,13 @@ def test_evaluate_unknown_function_raises() raises:
         _ = evaluate(_unary("erf", Expression.number(1)))
 
 
+def test_string_overloads() raises:
+    """The string overloads parse their input before substituting/evaluating."""
+    assert_equal(String(substitute("x**2 + 1", "x", 5)), "5**2 + 1")
+    assert_equal(String(evaluate("2 * 3 + 4")), "10")
+    assert_equal(String(evaluate(substitute("x**2 + 3 * x - 1", "x", 5))), "39")
+
+
 def main() raises:
     test_substitute_symbol()
     test_substitute_is_structural_not_simplified()
@@ -127,4 +134,5 @@ def main() raises:
     test_evaluate_precision()
     test_evaluate_free_symbol_raises()
     test_evaluate_unknown_function_raises()
+    test_string_overloads()
     print("numeric: all tests passed")
